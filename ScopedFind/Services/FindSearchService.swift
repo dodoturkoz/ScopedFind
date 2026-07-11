@@ -38,7 +38,8 @@ protocol FindSearching: AnyObject {
         extensions: String,
         caseSensitive: Bool,
         includeHidden: Bool,
-        target: SearchTarget
+        target: SearchTarget,
+        matchMode: SearchMatchMode
     ) -> AsyncThrowingStream<FindSearchEvent, Error>
 
     func cancel()
@@ -64,7 +65,8 @@ final class FindSearchService: FindSearching {
         extensions: String,
         caseSensitive: Bool,
         includeHidden: Bool,
-        target: SearchTarget
+        target: SearchTarget,
+        matchMode: SearchMatchMode
     ) -> AsyncThrowingStream<FindSearchEvent, Error> {
         AsyncThrowingStream { continuation in
             executionQueue.async {
@@ -75,6 +77,7 @@ final class FindSearchService: FindSearching {
                     caseSensitive: caseSensitive,
                     includeHidden: includeHidden,
                     target: target,
+                    matchMode: matchMode,
                     continuation: continuation
                 )
             }
@@ -105,6 +108,7 @@ final class FindSearchService: FindSearching {
         caseSensitive: Bool,
         includeHidden: Bool,
         target: SearchTarget,
+        matchMode: SearchMatchMode,
         continuation: AsyncThrowingStream<FindSearchEvent, Error>.Continuation
     ) {
         do {
@@ -122,7 +126,8 @@ final class FindSearchService: FindSearching {
                 extensions: extensions,
                 caseSensitive: caseSensitive,
                 includeHidden: includeHidden,
-                target: target
+                target: target,
+                matchMode: matchMode
             )
 
             let process = Process()

@@ -4,6 +4,7 @@ Notes for future coding agents working on ScopedFind.
 
 - ScopedFind is a small native macOS SwiftUI app around `/usr/bin/find`.
 - The core promise is filename/folder-name search only. Do not accidentally expand behavior into content search without making that a deliberate product change and updating the README/UI.
+- Fuzzy search is currently dependency-free and still implemented as name matching through `/usr/bin/find`; do not introduce an external `fzf` binary unless there is a deliberate packaging/release decision.
 - Search command construction should stay shell-free: use `Process`, a fixed `/usr/bin/find` executable URL, and argument arrays.
 - Keep privacy claims honest. If networking, telemetry, logging, persistent background behavior, Full Disk Access, or update mechanisms are added, update `README.md`.
 - If user-facing behavior changes, update `README.md`; if the UI changes noticeably, consider updating `docs/screenshot.png`.

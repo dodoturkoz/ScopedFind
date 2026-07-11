@@ -31,7 +31,8 @@ struct FindCommandBuilder {
         extensions: String,
         caseSensitive: Bool,
         includeHidden: Bool,
-        target: SearchTarget
+        target: SearchTarget,
+        matchMode: SearchMatchMode = .contains
     ) throws -> FindCommand {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedExtensions = Self.normalizedExtensions(from: extensions)
@@ -52,6 +53,7 @@ struct FindCommandBuilder {
         let matchArguments = Self.matchArguments(
             query: trimmedQuery,
             extensions: normalizedExtensions,
+            matchMode: matchMode,
             namePredicate: namePredicate
         )
 
@@ -85,12 +87,13 @@ struct FindCommandBuilder {
     private static func matchArguments(
         query: String,
         extensions: [String],
+        matchMode: SearchMatchMode,
         namePredicate: String
     ) -> [String] {
         var arguments: [String] = []
 
         if !query.isEmpty {
-            arguments += [namePredicate, "*\(escapedFindPatternComponent(query))*"]
+            arguments += [namePredicate, namePattern(for: query, matchMode: matchMode)]
         }
 
         if !extensions.isEmpty {
@@ -98,6 +101,15 @@ struct FindCommandBuilder {
         }
 
         return arguments
+    }
+
+    private static func namePattern(for query: String, matchMode: SearchMatchMode) -> String {
+        switch matchMode {
+        case .contains:
+            return "*\(escapedFindPatternComponent(query))*"
+        case .fuzzy:
+            return fuzzyFindPatternComponent(query)
+        }
     }
 
     private static func extensionMatchArguments(
@@ -128,6 +140,15 @@ struct FindCommandBuilder {
         return result
     }
 
+    static func fuzzyFindPatternComponent(_ value: String) -> String {
+        var result = "*"
+        for character in value where !character.isWhitespaceOrNewline {
+            result += escapedFindPatternComponent(String(character))
+            result.append("*")
+        }
+        return result
+    }
+
     static func pathContainsHiddenComponent(_ url: URL, relativeTo rootURL: URL) -> Bool {
         let rootComponents = rootURL.standardizedFileURL.pathComponents
         let pathComponents = url.standardizedFileURL.pathComponents
@@ -141,6 +162,14 @@ struct FindCommandBuilder {
 
         return relativeComponents.contains { component in
             component.count > 1 && component.hasPrefix(".")
+        }
+    }
+}
+
+private extension Character {
+    var isWhitespaceOrNewline: Bool {
+        unicodeScalars.allSatisfy { scalar in
+            CharacterSet.whitespacesAndNewlines.contains(scalar)
         }
     }
 }

@@ -14,25 +14,28 @@ struct ContentView: View {
         }
         .padding(20)
         .frame(minWidth: 760, minHeight: 520)
-        .onChange(of: viewModel.selectedFolder) { _ in
+        .onChange(of: viewModel.selectedFolder) {
             viewModel.scheduleAutoSearch()
         }
-        .onChange(of: viewModel.query) { _ in
+        .onChange(of: viewModel.query) {
             viewModel.scheduleAutoSearch()
         }
-        .onChange(of: viewModel.extensionFilter) { _ in
+        .onChange(of: viewModel.extensionFilter) {
             viewModel.scheduleAutoSearch()
         }
-        .onChange(of: viewModel.isCaseSensitive) { _ in
+        .onChange(of: viewModel.isCaseSensitive) {
             viewModel.scheduleAutoSearch()
         }
-        .onChange(of: viewModel.includeHiddenFiles) { _ in
+        .onChange(of: viewModel.includeHiddenFiles) {
             viewModel.scheduleAutoSearch()
         }
-        .onChange(of: viewModel.autoSearchEnabled) { _ in
+        .onChange(of: viewModel.autoSearchEnabled) {
             viewModel.scheduleAutoSearch()
         }
-        .onChange(of: viewModel.searchTarget) { _ in
+        .onChange(of: viewModel.searchTarget) {
+            viewModel.scheduleAutoSearch()
+        }
+        .onChange(of: viewModel.matchMode) {
             viewModel.scheduleAutoSearch()
         }
     }
@@ -99,6 +102,18 @@ struct ContentView: View {
                 Toggle("Include hidden files", isOn: $viewModel.includeHiddenFiles)
                 Toggle("Auto search", isOn: $viewModel.autoSearchEnabled)
                     .help("Runs a search after you stop typing for about one second.")
+            }
+            .toggleStyle(.checkbox)
+
+            HStack(spacing: 14) {
+                Picker("Name match", selection: $viewModel.matchMode) {
+                    ForEach(SearchMatchMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 240)
+                .help(viewModel.matchMode.helpText)
 
                 Picker("Result type", selection: $viewModel.searchTarget) {
                     ForEach(SearchTarget.allCases) { target in
@@ -108,7 +123,6 @@ struct ContentView: View {
                 .pickerStyle(.menu)
                 .frame(width: 190)
             }
-            .toggleStyle(.checkbox)
         }
     }
 

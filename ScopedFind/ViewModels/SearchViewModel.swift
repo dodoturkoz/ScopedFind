@@ -36,6 +36,7 @@ final class SearchViewModel: ObservableObject {
     @Published var includeHiddenFiles = false
     @Published var autoSearchEnabled = true
     @Published var searchTarget: SearchTarget = .all
+    @Published var matchMode: SearchMatchMode = .contains
     @Published private(set) var results: [SearchResult] = []
     @Published private(set) var status: SearchStatus = .idle
 
@@ -130,6 +131,7 @@ final class SearchViewModel: ObservableObject {
         let caseSensitive = isCaseSensitive
         let includeHidden = includeHiddenFiles
         let target = searchTarget
+        let matchMode = matchMode
 
         searchTask = Task {
             do {
@@ -141,7 +143,8 @@ final class SearchViewModel: ObservableObject {
                     extensions: extensions,
                     caseSensitive: caseSensitive,
                     includeHidden: includeHidden,
-                    target: target
+                    target: target,
+                    matchMode: matchMode
                 ) {
                     switch event {
                     case let .result(result):

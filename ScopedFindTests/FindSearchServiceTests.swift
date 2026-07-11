@@ -126,6 +126,23 @@ final class FindSearchServiceTests: XCTestCase {
         XCTAssertEqual(Set(results.map(\.url.path)), Set([swiftFile.path, markdownFile.path]))
     }
 
+    func testServiceCanSearchWithFuzzyNameMatching() async throws {
+        let expected = temporaryFolder.appendingPathComponent("ScopedFind.txt")
+        let nonMatch = temporaryFolder.appendingPathComponent("FindScope.txt")
+        try Data().write(to: expected)
+        try Data().write(to: nonMatch)
+
+        let results = try await collectResults(
+            query: "sf",
+            extensions: "",
+            includeHidden: true,
+            target: .files,
+            matchMode: .fuzzy
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [expected.path])
+    }
+
     func testPermissionDeniedSurfacesWarningAndKeepsAccessibleResults() async throws {
         let visibleFile = temporaryFolder.appendingPathComponent("permission-note.txt")
         try Data().write(to: visibleFile)
@@ -147,7 +164,8 @@ final class FindSearchServiceTests: XCTestCase {
             extensions: "",
             caseSensitive: false,
             includeHidden: false,
-            target: .all
+            target: .all,
+            matchMode: .contains
         ) {
             switch event {
             case let .result(result):
@@ -165,7 +183,8 @@ final class FindSearchServiceTests: XCTestCase {
         query: String,
         extensions: String,
         includeHidden: Bool,
-        target: SearchTarget
+        target: SearchTarget,
+        matchMode: SearchMatchMode = .contains
     ) async throws -> [SearchResult] {
         var results: [SearchResult] = []
         let service = FindSearchService()
@@ -176,7 +195,8 @@ final class FindSearchServiceTests: XCTestCase {
             extensions: extensions,
             caseSensitive: false,
             includeHidden: includeHidden,
-            target: target
+            target: target,
+            matchMode: matchMode
         ) {
             if case let .result(result) = event {
                 results.append(result)

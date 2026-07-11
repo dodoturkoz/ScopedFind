@@ -102,6 +102,34 @@ final class FindCommandBuilderTests: XCTestCase {
         XCTAssertEqual(command.arguments[2], "*budget \\[final\\]\\?\\*.pdf*")
     }
 
+    func testFuzzyCommandUsesOrderedCharacterPattern() throws {
+        let command = try FindCommandBuilder().makeCommand(
+            folder: temporaryFolder,
+            query: "sf",
+            extensions: "",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .all,
+            matchMode: .fuzzy
+        )
+
+        XCTAssertEqual(command.arguments, [temporaryFolder.path, "-iname", "*s*f*", "-print0"])
+    }
+
+    func testFuzzyCommandIgnoresQueryWhitespace() throws {
+        let command = try FindCommandBuilder().makeCommand(
+            folder: temporaryFolder,
+            query: "s f",
+            extensions: "",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .all,
+            matchMode: .fuzzy
+        )
+
+        XCTAssertEqual(command.arguments, [temporaryFolder.path, "-iname", "*s*f*", "-print0"])
+    }
+
     func testExtensionOnlyCommandBuildsGroupedExtensionPredicate() throws {
         let command = try FindCommandBuilder().makeCommand(
             folder: temporaryFolder,
@@ -131,6 +159,23 @@ final class FindCommandBuilderTests: XCTestCase {
         XCTAssertEqual(
             command.arguments,
             [temporaryFolder.path, "-name", "*report*", "(", "-name", "*.pdf", ")", "-print0"]
+        )
+    }
+
+    func testFuzzyFilenameQueryCombinesWithExtensionFilter() throws {
+        let command = try FindCommandBuilder().makeCommand(
+            folder: temporaryFolder,
+            query: "sf",
+            extensions: "swift",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .files,
+            matchMode: .fuzzy
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "-type", "f", "-iname", "*s*f*", "(", "-iname", "*.swift", ")", "-print0"]
         )
     }
 

@@ -32,6 +32,7 @@ Building from source is still available for users who prefer to inspect and comp
 - Native folder picker
 - Case-sensitive or case-insensitive filename search
 - Optional extension filtering, such as `swift`, `.pdf`, or `jpg,png`
+- Contains or fuzzy filename matching
 - Searches file and folder names only, not file contents
 - Recursive search inside the selected folder
 - Result type filtering for files only, folders/apps only, or both
@@ -75,6 +76,11 @@ ScopedFind searches file and folder names only. It does not search inside docume
 
 When Auto search is enabled, ScopedFind starts a new search about 1.2 seconds after you stop typing or change a search option.
 
+The Name match control has two modes:
+
+- Contains: `report` matches names containing `report`.
+- Fuzzy: `sf` matches names where `s` and `f` appear in that order, such as `ScopedFind`. Spaces in the query are ignored in fuzzy mode.
+
 ## Why Not Finder Search?
 
 Finder and Spotlight are excellent for broad macOS search, but they often combine filename matches and file-content matches. That can be confusing when you only want to know whether a file or folder with a specific name exists.
@@ -88,7 +94,7 @@ Finder and Spotlight are excellent for broad macOS search, but they often combin
 | Filter folders/apps vs regular files | Not the main workflow | Built-in Result type menu |
 | Filter by extension | Possible, but not always obvious | Dedicated Extensions field |
 
-The basic name match is equivalent to:
+In Contains mode, the basic name match is equivalent to:
 
 ```bash
 /usr/bin/find "/selected/folder" -iname "*query*"

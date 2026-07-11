@@ -85,7 +85,8 @@ private final class MockFindSearchService: FindSearching {
         extensions: String,
         caseSensitive: Bool,
         includeHidden: Bool,
-        target: SearchTarget
+        target: SearchTarget,
+        matchMode: SearchMatchMode
     ) -> AsyncThrowingStream<FindSearchEvent, Error> {
         searchCallCount += 1
         return AsyncThrowingStream<FindSearchEvent, Error> { _ in }

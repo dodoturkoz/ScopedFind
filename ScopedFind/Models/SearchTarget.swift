@@ -31,3 +31,30 @@ enum SearchTarget: String, CaseIterable, Identifiable {
         }
     }
 }
+
+enum SearchMatchMode: String, CaseIterable, Identifiable {
+    case contains
+    case fuzzy
+
+    var id: String {
+        rawValue
+    }
+
+    var label: String {
+        switch self {
+        case .contains:
+            return "Contains"
+        case .fuzzy:
+            return "Fuzzy"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .contains:
+            return "Matches names containing the typed text."
+        case .fuzzy:
+            return "Matches names where typed characters appear in order, such as sf matching ScopedFind."
+        }
+    }
+}
