@@ -11,7 +11,7 @@ enum SearchStatus: Equatable {
     var message: String {
         switch self {
         case .idle:
-            return "Choose a folder and enter a search term."
+            return "Choose a folder and search by file or folder name."
         case .searching:
             return "Searching..."
         case let .finished(resultCount, warning):

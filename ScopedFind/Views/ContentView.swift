@@ -21,6 +21,10 @@ struct ContentView: View {
             Text("ScopedFind")
                 .font(.title2.weight(.semibold))
 
+            Text("Searches file and folder names only, not file contents.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
             Text(selectedFolderText)
                 .font(.callout)
                 .foregroundStyle(viewModel.selectedFolder == nil ? .secondary : .primary)
@@ -32,7 +36,7 @@ struct ContentView: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                TextField("Search by filename", text: $viewModel.query)
+                TextField("Name contains (not file contents)", text: $viewModel.query)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit {
                         viewModel.startSearch()

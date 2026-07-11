@@ -2,7 +2,15 @@
 
 ScopedFind is a small native macOS app that wraps macOS's built-in `/usr/bin/find` command in a SwiftUI interface.
 
-The app searches only inside a folder you explicitly choose. It is an MVP for quick filename searches, not a Finder replacement.
+The app searches only inside a folder you explicitly choose. It searches file and folder names only, not file contents. It is an MVP for quick filename searches, not a Finder replacement.
+
+![ScopedFind screenshot](docs/screenshot.png)
+
+## Download
+
+Download the latest DMG from the [Releases](https://github.com/dodoturkoz/ScopedFind/releases) page.
+
+The release DMG is currently unsigned and not notarized. If macOS warns that it cannot verify the app, open it with Control-click > Open. Building from source is still available for users who prefer to inspect and compile the app themselves.
 
 ## Features
 
@@ -10,6 +18,7 @@ The app searches only inside a folder you explicitly choose. It is an MVP for qu
 - Native folder picker
 - Case-sensitive or case-insensitive filename search
 - Optional extension filtering, such as `swift`, `.pdf`, or `jpg,png`
+- Searches file and folder names only, not file contents
 - Recursive search inside the selected folder
 - Result type filtering for files only, folders only, or both
 - Optional hidden-file search
@@ -26,6 +35,7 @@ ScopedFind is intentionally local and transparent.
 - It contains no analytics, telemetry, ads, crash-reporting SDK, tracking SDK, updater, launch agent, or background service.
 - It does not request Full Disk Access.
 - It searches only inside the folder you choose.
+- It searches names only and does not read file contents.
 - It executes only `/usr/bin/find`.
 - It does not invoke `/bin/sh`, `/bin/zsh`, or any other shell.
 - It does not log filenames or search queries.
@@ -46,6 +56,8 @@ swift test
 
 Searches are recursive by default. When you choose a folder, ScopedFind searches that folder and its subfolders, but it does not leave the selected folder.
 
+ScopedFind searches file and folder names only. It does not search inside documents, PDFs, text files, source files, or other file contents.
+
 The basic name match is equivalent to:
 
 ```bash
@@ -56,7 +68,7 @@ By default, ScopedFind also excludes hidden files and folders. When case-sensiti
 
 The Extensions field is optional. It accepts extensions with or without a leading dot, separated by commas, semicolons, spaces, or newlines. For example, `swift,md` matches `.swift` and `.md` files. You can search by extension only without entering a filename query.
 
-## Installing a Local Build
+## Building Locally
 
 When you are happy with the app, you can build it once and use it like a normal macOS app:
 

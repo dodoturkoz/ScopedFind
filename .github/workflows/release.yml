@@ -1,0 +1,49 @@
+name: Release DMG
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build app
+        run: |
+          xcodebuild \
+            -project ScopedFind.xcodeproj \
+            -scheme ScopedFind \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= \
+            build
+
+      - name: Create DMG
+        run: |
+          mkdir -p release-payload
+          cp -R build/Build/Products/Release/ScopedFind.app release-payload/
+          hdiutil create \
+            -volname "ScopedFind" \
+            -srcfolder release-payload \
+            -ov \
+            -format UDZO \
+            "ScopedFind-${GITHUB_REF_NAME}.dmg"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "ScopedFind-${GITHUB_REF_NAME}.dmg" \
+            --title "ScopedFind ${GITHUB_REF_NAME}" \
+            --notes "Unsigned macOS DMG build. If macOS warns that it cannot verify the app, open it with Control-click > Open. Building from source remains available in the README."
