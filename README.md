@@ -10,7 +10,21 @@ The app searches only inside a folder you explicitly choose. It searches file an
 
 Download the latest DMG from the [Releases](https://github.com/dodoturkoz/ScopedFind/releases) page.
 
-The release DMG is currently unsigned and not notarized. If macOS warns that it cannot verify the app, open it with Control-click > Open. Building from source is still available for users who prefer to inspect and compile the app themselves.
+The release DMG is currently unsigned and not notarized. If macOS warns that it cannot verify the app, try the normal macOS approval flow first:
+
+1. Drag `ScopedFind.app` into `/Applications`.
+2. Control-click `ScopedFind.app`, choose Open, then confirm Open if macOS offers it.
+3. If macOS still blocks the app, open System Settings > Privacy & Security and look for an Open Anyway button for ScopedFind.
+
+As an advanced fallback, if you downloaded ScopedFind from this repository and trust this copy of the app, you can remove macOS's quarantine flag from that app bundle:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/ScopedFind.app
+```
+
+Use the real app path if it is somewhere else, such as `~/Downloads/ScopedFind.app`. Do not run this command for apps you do not trust; it bypasses macOS's quarantine warning for that copy of the app.
+
+Building from source is still available for users who prefer to inspect and compile the app themselves.
 
 ## Features
 
@@ -22,6 +36,7 @@ The release DMG is currently unsigned and not notarized. If macOS warns that it 
 - Recursive search inside the selected folder
 - Result type filtering for files only, folders/apps only, or both
 - Optional hidden-file search
+- Optional auto-search after typing pauses
 - Streaming results while `/usr/bin/find` is still running
 - Cancel button for active searches
 - Double-click to open results
@@ -57,6 +72,21 @@ swift test
 Searches are recursive by default. When you choose a folder, ScopedFind searches that folder and its subfolders, but it does not leave the selected folder.
 
 ScopedFind searches file and folder names only. It does not search inside documents, PDFs, text files, source files, or other file contents.
+
+When Auto search is enabled, ScopedFind starts a new search about 1.2 seconds after you stop typing or change a search option.
+
+## Why Not Finder Search?
+
+Finder and Spotlight are excellent for broad macOS search, but they often combine filename matches and file-content matches. That can be confusing when you only want to know whether a file or folder with a specific name exists.
+
+| Need | Finder search | ScopedFind |
+| --- | --- | --- |
+| Find by filename only | Can mix filename and content matches | Always names only |
+| Avoid PDF/document text hits | Often returns content matches | Never reads file contents |
+| Search exactly one chosen folder tree | Can be broad depending on scope and Spotlight behavior | Stays inside the folder you choose |
+| Search without Spotlight indexing | Depends on macOS indexing behavior | Uses `/usr/bin/find` directly |
+| Filter folders/apps vs regular files | Not the main workflow | Built-in Result type menu |
+| Filter by extension | Possible, but not always obvious | Dedicated Extensions field |
 
 The basic name match is equivalent to:
 

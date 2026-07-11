@@ -14,6 +14,27 @@ struct ContentView: View {
         }
         .padding(20)
         .frame(minWidth: 760, minHeight: 520)
+        .onChange(of: viewModel.selectedFolder) { _ in
+            viewModel.scheduleAutoSearch()
+        }
+        .onChange(of: viewModel.query) { _ in
+            viewModel.scheduleAutoSearch()
+        }
+        .onChange(of: viewModel.extensionFilter) { _ in
+            viewModel.scheduleAutoSearch()
+        }
+        .onChange(of: viewModel.isCaseSensitive) { _ in
+            viewModel.scheduleAutoSearch()
+        }
+        .onChange(of: viewModel.includeHiddenFiles) { _ in
+            viewModel.scheduleAutoSearch()
+        }
+        .onChange(of: viewModel.autoSearchEnabled) { _ in
+            viewModel.scheduleAutoSearch()
+        }
+        .onChange(of: viewModel.searchTarget) { _ in
+            viewModel.scheduleAutoSearch()
+        }
     }
 
     private var header: some View {
@@ -21,7 +42,7 @@ struct ContentView: View {
             Text("ScopedFind")
                 .font(.title2.weight(.semibold))
 
-            Text("Searches file and folder names only, not file contents.")
+            Text("Searches names only, not file contents. Recursively searches inside the chosen folder.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -76,6 +97,8 @@ struct ContentView: View {
             HStack(spacing: 18) {
                 Toggle("Case sensitive", isOn: $viewModel.isCaseSensitive)
                 Toggle("Include hidden files", isOn: $viewModel.includeHiddenFiles)
+                Toggle("Auto search", isOn: $viewModel.autoSearchEnabled)
+                    .help("Runs a search after you stop typing for about one second.")
 
                 Picker("Result type", selection: $viewModel.searchTarget) {
                     ForEach(SearchTarget.allCases) { target in

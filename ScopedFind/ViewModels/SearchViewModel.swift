@@ -34,12 +34,15 @@ final class SearchViewModel: ObservableObject {
     @Published var extensionFilter = ""
     @Published var isCaseSensitive = false
     @Published var includeHiddenFiles = false
+    @Published var autoSearchEnabled = true
     @Published var searchTarget: SearchTarget = .all
     @Published private(set) var results: [SearchResult] = []
     @Published private(set) var status: SearchStatus = .idle
 
     private let searchService: FindSearching
+    private let autoSearchDelayNanoseconds: UInt64
     private var searchTask: Task<Void, Never>?
+    private var autoSearchTask: Task<Void, Never>?
     private var latestWarning: String?
 
     var canSearch: Bool {
@@ -58,8 +61,12 @@ final class SearchViewModel: ObservableObject {
             !FindCommandBuilder.normalizedExtensions(from: extensionFilter).isEmpty
     }
 
-    init(searchService: FindSearching = FindSearchService()) {
+    init(
+        searchService: FindSearching = FindSearchService(),
+        autoSearchDelayNanoseconds: UInt64 = 1_200_000_000
+    ) {
         self.searchService = searchService
+        self.autoSearchDelayNanoseconds = autoSearchDelayNanoseconds
     }
 
     func selectFolder(_ folder: URL) {
@@ -69,7 +76,36 @@ final class SearchViewModel: ObservableObject {
         }
     }
 
+    func scheduleAutoSearch() {
+        autoSearchTask?.cancel()
+        autoSearchTask = nil
+
+        guard autoSearchEnabled, selectedFolder != nil, hasSearchCriteria else {
+            return
+        }
+
+        let delay = autoSearchDelayNanoseconds
+        autoSearchTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+
+            self?.startAutomaticSearch()
+        }
+    }
+
     func startSearch() {
+        startSearch(cancelScheduledAutoSearch: true)
+    }
+
+    private func startSearch(cancelScheduledAutoSearch: Bool) {
+        if cancelScheduledAutoSearch {
+            autoSearchTask?.cancel()
+            autoSearchTask = nil
+        }
+
         guard !isSearching else {
             return
         }
@@ -138,6 +174,15 @@ final class SearchViewModel: ObservableObject {
     }
 
     func cancelSearch() {
+        cancelSearch(cancelScheduledAutoSearch: true)
+    }
+
+    private func cancelSearch(cancelScheduledAutoSearch: Bool) {
+        if cancelScheduledAutoSearch {
+            autoSearchTask?.cancel()
+            autoSearchTask = nil
+        }
+
         guard isSearching else {
             return
         }
@@ -145,5 +190,26 @@ final class SearchViewModel: ObservableObject {
         searchTask?.cancel()
         searchService.cancel()
         status = .cancelled
+    }
+
+    private func startAutomaticSearch() {
+        guard autoSearchEnabled, selectedFolder != nil, hasSearchCriteria else {
+            return
+        }
+
+        if isSearching {
+            let taskToAwait = searchTask
+            cancelSearch(cancelScheduledAutoSearch: false)
+            autoSearchTask = Task { [weak self, taskToAwait] in
+                await taskToAwait?.value
+                guard !Task.isCancelled else {
+                    return
+                }
+                self?.startAutomaticSearch()
+            }
+            return
+        }
+
+        startSearch(cancelScheduledAutoSearch: false)
     }
 }
