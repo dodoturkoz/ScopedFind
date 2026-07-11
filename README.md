@@ -13,7 +13,7 @@ Download the latest DMG from the [Releases](https://github.com/dodoturkoz/Scoped
 The release DMG is currently unsigned and not notarized. If macOS warns that it cannot verify the app, try the normal macOS approval flow first:
 
 1. Open the DMG.
-2. Drag `ScopedFind.app` onto the `Applications` shortcut in the DMG window.
+2. Drag `ScopedFind.app` across the arrow onto the `Applications` shortcut in the DMG window.
 3. If the DMG window does not show an `Applications` shortcut, drag `ScopedFind.app` onto Applications in Finder's sidebar, or open `/Applications` in another Finder window and drag it there.
 4. Eject the DMG.
 5. Open `/Applications/ScopedFind.app`. If macOS blocks it, Control-click `ScopedFind.app`, choose Open, then confirm Open if macOS offers it.
