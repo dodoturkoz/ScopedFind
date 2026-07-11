@@ -32,6 +32,7 @@ jobs:
         run: |
           mkdir -p release-payload
           cp -R build/Build/Products/Release/ScopedFind.app release-payload/
+          ln -s /Applications release-payload/Applications
           hdiutil create \
             -volname "ScopedFind" \
             -srcfolder release-payload \
@@ -46,4 +47,4 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             "ScopedFind-${GITHUB_REF_NAME}.dmg" \
             --title "ScopedFind ${GITHUB_REF_NAME}" \
-            --notes "Unsigned macOS DMG build. If macOS warns that it cannot verify the app, open it with Control-click > Open. Building from source remains available in the README."
+            --notes "Unsigned macOS DMG build. Drag ScopedFind.app onto the Applications shortcut in the DMG window, then open it from /Applications. If macOS warns that it cannot verify the app, open it with Control-click > Open. Building from source remains available in the README."
