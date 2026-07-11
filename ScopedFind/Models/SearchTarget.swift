@@ -16,7 +16,7 @@ enum SearchTarget: String, CaseIterable, Identifiable {
         case .files:
             return "Files only"
         case .directories:
-            return "Folders only"
+            return "Folders/apps only"
         }
     }
 
@@ -31,4 +31,3 @@ enum SearchTarget: String, CaseIterable, Identifiable {
         }
     }
 }
-

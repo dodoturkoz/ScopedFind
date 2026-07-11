@@ -20,7 +20,7 @@ The release DMG is currently unsigned and not notarized. If macOS warns that it 
 - Optional extension filtering, such as `swift`, `.pdf`, or `jpg,png`
 - Searches file and folder names only, not file contents
 - Recursive search inside the selected folder
-- Result type filtering for files only, folders only, or both
+- Result type filtering for files only, folders/apps only, or both
 - Optional hidden-file search
 - Streaming results while `/usr/bin/find` is still running
 - Cancel button for active searches
@@ -64,9 +64,15 @@ The basic name match is equivalent to:
 /usr/bin/find "/selected/folder" -iname "*query*"
 ```
 
-By default, ScopedFind also excludes hidden files and folders. When case-sensitive search is enabled, ScopedFind uses `-name` instead of `-iname`. When files-only or folders-only search is selected, it adds the matching `find` type predicate.
+By default, ScopedFind also excludes hidden files and folders. When case-sensitive search is enabled, ScopedFind uses `-name` instead of `-iname`. When files-only or folders/apps-only search is selected, it adds the matching `find` type predicate.
 
 The Extensions field is optional. It accepts extensions with or without a leading dot, separated by commas, semicolons, spaces, or newlines. For example, `swift,md` matches `.swift` and `.md` files. You can search by extension only without entering a filename query.
+
+### Searching Applications
+
+macOS apps are usually `.app` bundles, which the Unix filesystem treats as directories. If you search inside `/Applications`, keep Result type set to `Files and folders` or use `Folders/apps only`. A `Files only` search will not return `.app` bundles.
+
+Some Apple/system apps may also live in `/System/Applications` instead of `/Applications`, so choose that folder if the app you expect is not found.
 
 ## Building Locally
 

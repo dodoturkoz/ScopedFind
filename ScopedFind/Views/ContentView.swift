@@ -30,6 +30,16 @@ struct ContentView: View {
                 .foregroundStyle(viewModel.selectedFolder == nil ? .secondary : .primary)
                 .lineLimit(2)
                 .textSelection(.enabled)
+
+            if shouldShowApplicationsWarning {
+                Label(
+                    "Apps are .app bundles, which macOS treats as folders. Use Files and folders or Folders/apps only. Some Apple apps live in /System/Applications.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .lineLimit(2)
+            }
         }
     }
 
@@ -130,6 +140,14 @@ struct ContentView: View {
 
     private var selectedFolderText: String {
         viewModel.selectedFolder?.path ?? "No folder selected. Search stays inside the folder you choose."
+    }
+
+    private var shouldShowApplicationsWarning: Bool {
+        guard let selectedFolder = viewModel.selectedFolder else {
+            return false
+        }
+
+        return selectedFolder.standardizedFileURL.lastPathComponent == "Applications"
     }
 
     private var statusColor: Color {
