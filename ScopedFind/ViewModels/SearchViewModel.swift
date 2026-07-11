@@ -1,0 +1,149 @@
+import Foundation
+import Combine
+
+enum SearchStatus: Equatable {
+    case idle
+    case searching
+    case finished(resultCount: Int, warning: String?)
+    case cancelled
+    case failed(String)
+
+    var message: String {
+        switch self {
+        case .idle:
+            return "Choose a folder and enter a search term."
+        case .searching:
+            return "Searching..."
+        case let .finished(resultCount, warning):
+            if let warning {
+                return "Finished with \(resultCount) result\(resultCount == 1 ? "" : "s"). \(warning)"
+            }
+            return "Finished with \(resultCount) result\(resultCount == 1 ? "" : "s")."
+        case .cancelled:
+            return "Search cancelled."
+        case let .failed(message):
+            return message
+        }
+    }
+}
+
+@MainActor
+final class SearchViewModel: ObservableObject {
+    @Published var selectedFolder: URL?
+    @Published var query = ""
+    @Published var extensionFilter = ""
+    @Published var isCaseSensitive = false
+    @Published var includeHiddenFiles = false
+    @Published var searchTarget: SearchTarget = .all
+    @Published private(set) var results: [SearchResult] = []
+    @Published private(set) var status: SearchStatus = .idle
+
+    private let searchService: FindSearching
+    private var searchTask: Task<Void, Never>?
+    private var latestWarning: String?
+
+    var canSearch: Bool {
+        selectedFolder != nil && hasSearchCriteria && !isSearching
+    }
+
+    var isSearching: Bool {
+        if case .searching = status {
+            return true
+        }
+        return false
+    }
+
+    private var hasSearchCriteria: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !FindCommandBuilder.normalizedExtensions(from: extensionFilter).isEmpty
+    }
+
+    init(searchService: FindSearching = FindSearchService()) {
+        self.searchService = searchService
+    }
+
+    func selectFolder(_ folder: URL) {
+        selectedFolder = folder
+        if case .idle = status {
+            status = .idle
+        }
+    }
+
+    func startSearch() {
+        guard !isSearching else {
+            return
+        }
+
+        guard let selectedFolder else {
+            status = .failed("Choose a folder before searching.")
+            return
+        }
+
+        guard hasSearchCriteria else {
+            status = .failed("Enter a search term or extension before starting.")
+            return
+        }
+
+        results.removeAll()
+        latestWarning = nil
+        status = .searching
+
+        let folder = selectedFolder
+        let query = query
+        let extensions = extensionFilter
+        let caseSensitive = isCaseSensitive
+        let includeHidden = includeHiddenFiles
+        let target = searchTarget
+
+        searchTask = Task {
+            do {
+                var pendingResults: [SearchResult] = []
+
+                for try await event in searchService.search(
+                    folder: folder,
+                    query: query,
+                    extensions: extensions,
+                    caseSensitive: caseSensitive,
+                    includeHidden: includeHidden,
+                    target: target
+                ) {
+                    switch event {
+                    case let .result(result):
+                        pendingResults.append(result)
+                        if pendingResults.count >= 100 {
+                            results.append(contentsOf: pendingResults)
+                            pendingResults.removeAll(keepingCapacity: true)
+                        }
+                    case let .warning(message):
+                        latestWarning = message
+                    }
+                }
+
+                if !pendingResults.isEmpty {
+                    results.append(contentsOf: pendingResults)
+                }
+                status = .finished(resultCount: results.count, warning: latestWarning)
+            } catch is CancellationError {
+                status = .cancelled
+            } catch let error as FindSearchServiceError where error == .cancelled {
+                status = .cancelled
+            } catch let error as LocalizedError {
+                status = .failed(error.errorDescription ?? "The search failed.")
+            } catch {
+                status = .failed("The search failed.")
+            }
+
+            searchTask = nil
+        }
+    }
+
+    func cancelSearch() {
+        guard isSearching else {
+            return
+        }
+
+        searchTask?.cancel()
+        searchService.cancel()
+        status = .cancelled
+    }
+}

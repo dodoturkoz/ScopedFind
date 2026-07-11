@@ -1,0 +1,82 @@
+# ScopedFind
+
+ScopedFind is a small native macOS app that wraps macOS's built-in `/usr/bin/find` command in a SwiftUI interface.
+
+The app searches only inside a folder you explicitly choose. It is an MVP for quick filename searches, not a Finder replacement.
+
+## Features
+
+- Native Swift and SwiftUI macOS app
+- Native folder picker
+- Case-sensitive or case-insensitive filename search
+- Optional extension filtering, such as `swift`, `.pdf`, or `jpg,png`
+- Recursive search inside the selected folder
+- Result type filtering for files only, folders only, or both
+- Optional hidden-file search
+- Streaming results while `/usr/bin/find` is still running
+- Cancel button for active searches
+- Double-click to open results
+- Context menu actions for Open, Reveal in Finder, and Copy Path
+
+## Privacy
+
+ScopedFind is intentionally local and transparent.
+
+- It makes no network requests.
+- It contains no analytics, telemetry, ads, crash-reporting SDK, tracking SDK, updater, launch agent, or background service.
+- It does not request Full Disk Access.
+- It searches only inside the folder you choose.
+- It executes only `/usr/bin/find`.
+- It does not invoke `/bin/sh`, `/bin/zsh`, or any other shell.
+- It does not log filenames or search queries.
+
+The source code is public so you can inspect exactly how folder access and search execution work. Search commands are built with `Process`, a fixed executable URL, and a separate arguments array so folder names and search text are not interpreted as shell syntax.
+
+## Local Development
+
+Open `ScopedFind.xcodeproj` in Xcode and run the `ScopedFind` scheme.
+
+The repository also includes a `Package.swift` test harness for the non-UI logic, which is useful on machines that have the Swift toolchain installed:
+
+```bash
+swift test
+```
+
+## Search Behavior
+
+Searches are recursive by default. When you choose a folder, ScopedFind searches that folder and its subfolders, but it does not leave the selected folder.
+
+The basic name match is equivalent to:
+
+```bash
+/usr/bin/find "/selected/folder" -iname "*query*"
+```
+
+By default, ScopedFind also excludes hidden files and folders. When case-sensitive search is enabled, ScopedFind uses `-name` instead of `-iname`. When files-only or folders-only search is selected, it adds the matching `find` type predicate.
+
+The Extensions field is optional. It accepts extensions with or without a leading dot, separated by commas, semicolons, spaces, or newlines. For example, `swift,md` matches `.swift` and `.md` files. You can search by extension only without entering a filename query.
+
+## Installing a Local Build
+
+When you are happy with the app, you can build it once and use it like a normal macOS app:
+
+1. Open `ScopedFind.xcodeproj` in Xcode.
+2. Select the `ScopedFind` scheme and `My Mac`.
+3. Choose `Product > Build`.
+4. Choose `Product > Show Build Folder in Finder`.
+5. Open `Products/Debug` or `Products/Release`.
+6. Drag `ScopedFind.app` into `/Applications`.
+
+After that, you can launch ScopedFind from Applications, Spotlight, or your Dock without opening Xcode.
+
+## Folder Access
+
+The first version uses the folder access granted by the native macOS folder picker for the current app session. The code is structured so security-scoped bookmarks can be added later if persistent access is needed.
+
+## Project Scope
+
+This is a personal, single-maintainer project published for source transparency. The repository is not intended to be community-maintained and does not accept pull requests, issues, feature requests, or support requests.
+
+## License
+
+MIT License. See `LICENSE`.
