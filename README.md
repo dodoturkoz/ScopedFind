@@ -93,7 +93,7 @@ The first version uses the folder access granted by the native macOS folder pick
 
 ## Project Scope
 
-This is a personal, single-maintainer project published for source transparency. The repository is not intended to be community-maintained and does not accept pull requests, issues, feature requests, or support requests.
+This is a personal, single-maintainer project published for source transparency. Issues are open for bug reports and small questions, but pull requests are intentionally disabled because the project is not intended to be community-maintained.
 
 ## License
 
