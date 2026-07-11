@@ -60,21 +60,19 @@ hdiutil attach "${RW_DMG}" -mountpoint "${MOUNT_DIR}" -nobrowse -quiet -readwrit
 
 osascript <<APPLESCRIPT
 tell application "Finder"
-  tell disk "${VOLUME_NAME}"
-    open
-    delay 1
-    set current view of container window to icon view
-    set toolbar visible of container window to false
-    set statusbar visible of container window to false
-    set bounds of container window to {100, 100, 740, 460}
-    set viewOptions to the icon view options of container window
-    set arrangement of viewOptions to not arranged
-    set icon size of viewOptions to 96
-    set background picture of viewOptions to POSIX file "${MOUNT_DIR}/.background/background.png"
-    update without registering applications
-    delay 1
-    close
-  end tell
+  set mountedFolder to POSIX file "${MOUNT_DIR}" as alias
+  open mountedFolder
+  delay 1
+  set current view of container window of mountedFolder to icon view
+  set toolbar visible of container window of mountedFolder to false
+  set statusbar visible of container window of mountedFolder to false
+  set bounds of container window of mountedFolder to {100, 100, 740, 460}
+  set viewOptions to the icon view options of container window of mountedFolder
+  set arrangement of viewOptions to not arranged
+  set icon size of viewOptions to 96
+  set background picture of viewOptions to POSIX file "${MOUNT_DIR}/.background/background.png"
+  delay 1
+  close container window of mountedFolder
 end tell
 APPLESCRIPT
 
