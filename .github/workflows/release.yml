@@ -42,4 +42,4 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             "ScopedFind-${GITHUB_REF_NAME}.dmg" \
             --title "ScopedFind ${GITHUB_REF_NAME}" \
-            --notes "Unsigned macOS DMG build. Drag ScopedFind.app onto the Applications shortcut in the DMG window, then open it from /Applications. If macOS warns that it cannot verify the app, open it with Control-click > Open. Building from source remains available in the README."
+            --notes 'Unsigned macOS DMG build. Drag ScopedFind.app onto the Applications shortcut in the DMG window, then run `xattr -dr com.apple.quarantine /Applications/ScopedFind.app` in Terminal before opening it from Applications. Building from source remains available in the README.'
