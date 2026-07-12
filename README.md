@@ -1,8 +1,8 @@
 # ScopedFind
 
-ScopedFind is a small native macOS app that wraps macOS's built-in `/usr/bin/find` command in a SwiftUI interface.
+ScopedFind is a small native macOS app that wraps macOS's built-in `/usr/bin/find` and `/usr/bin/grep` commands in a SwiftUI interface.
 
-The app searches only inside a folder you explicitly choose. It searches file and folder names only, not file contents. It is an MVP for quick filename searches, not a Finder replacement.
+The app searches only inside a folder you explicitly choose. It can search file and folder names, or search file contents with an explicit Contents mode. It is an MVP for scoped local searches, not a Finder replacement.
 
 ![ScopedFind screenshot](docs/screenshot.png)
 
@@ -33,15 +33,16 @@ Building from source is still available for users who prefer to inspect and comp
 
 - Native Swift and SwiftUI macOS app
 - Native folder picker
-- Case-sensitive or case-insensitive filename search
+- Names or Contents search modes
+- Case-sensitive or case-insensitive search
 - Optional extension filtering, such as `swift`, `.pdf`, or `jpg,png`
 - Optional fuzzy filename matching
-- Searches file and folder names only, not file contents
+- Content search through the built-in `/usr/bin/grep`, with no extra dependencies
 - Recursive search inside the selected folder
-- Result type filtering for files only, folders/apps only, or both
+- Names-mode result type filtering for files only, folders/apps only, or both
 - Optional hidden-file search
 - Optional auto-search after typing pauses
-- Streaming results while `/usr/bin/find` is still running
+- Streaming results while the search command is still running
 - Cancel button for active searches
 - Double-click to open results
 - Context menu actions for Open, Reveal in Finder, and Copy Path
@@ -54,8 +55,9 @@ ScopedFind is intentionally local and transparent.
 - It contains no analytics, telemetry, ads, crash-reporting SDK, tracking SDK, updater, launch agent, or background service.
 - It does not request Full Disk Access.
 - It searches only inside the folder you choose.
-- It searches names only and does not read file contents.
-- It executes only `/usr/bin/find`.
+- Names mode does not read file contents.
+- Contents mode reads file contents inside the chosen folder to find matching files.
+- It executes only `/usr/bin/find` and `/usr/bin/grep`.
 - It does not invoke `/bin/sh`, `/bin/zsh`, or any other shell.
 - It does not log filenames or search queries.
 
@@ -75,11 +77,14 @@ swift test
 
 Searches are recursive by default. When you choose a folder, ScopedFind searches that folder and its subfolders, but it does not leave the selected folder.
 
-ScopedFind searches file and folder names only. It does not search inside documents, PDFs, text files, source files, or other file contents.
+ScopedFind has two search modes:
+
+- Names searches file and folder names with `/usr/bin/find`.
+- Contents searches inside regular files with `/usr/bin/grep` and returns matching files.
 
 When Auto search is enabled, ScopedFind starts a new search about 1.2 seconds after you stop typing or change a search option.
 
-By default, the name field uses contains matching:
+In Names mode, the query field uses contains matching:
 
 - `report` matches names containing `report`.
 
@@ -89,7 +94,9 @@ If Fuzzy name matching is enabled, ScopedFind matches names where the typed char
 - `rpt` can match `report-final.txt`.
 - Spaces in the query are ignored in fuzzy mode.
 
-Fuzzy name matching is still filename/folder-name search only. It is not typo correction, ranked `fzf` search, or file-content search.
+Fuzzy name matching is filename/folder-name search only. It is not typo correction, ranked `fzf` search, or content search.
+
+In Contents mode, the query field is treated as literal text, not a regular expression. ScopedFind uses `grep -F` so punctuation in your query is not interpreted as pattern syntax. Contents mode searches regular files, ignores binary files, and returns each matching file once. The Extensions field narrows which files are searched; unlike Names mode, content search requires a text query.
 
 ## Why Not Finder Search?
 
@@ -97,14 +104,14 @@ Finder and Spotlight are excellent for broad macOS search, but they often combin
 
 | Need | Finder search | ScopedFind |
 | --- | --- | --- |
-| Find by filename only | Can mix filename and content matches | Always names only |
-| Avoid PDF/document text hits | Often returns content matches | Never reads file contents |
+| Find by filename only | Can mix filename and content matches | Names mode searches names only |
+| Search file text without Spotlight | Depends on indexing and metadata behavior | Contents mode uses `/usr/bin/grep` directly |
 | Search exactly one chosen folder tree | Can be broad depending on scope and Spotlight behavior | Stays inside the folder you choose |
-| Search without Spotlight indexing | Depends on macOS indexing behavior | Uses `/usr/bin/find` directly |
-| Filter folders/apps vs regular files | Not the main workflow | Built-in Result type menu |
+| Search without Spotlight indexing | Depends on macOS indexing behavior | Uses `/usr/bin/find` and `/usr/bin/grep` directly |
+| Filter folders/apps vs regular files | Not the main workflow | Built-in Result type menu in Names mode |
 | Filter by extension | Possible, but not always obvious | Dedicated Extensions field |
 
-In Contains mode, the basic name match is equivalent to:
+In Names mode, the basic contains match is equivalent to:
 
 ```bash
 /usr/bin/find "/selected/folder" -iname "*query*"
@@ -114,9 +121,17 @@ By default, ScopedFind also excludes hidden files and folders. When case-sensiti
 
 The Extensions field is optional. It accepts extensions with or without a leading dot, separated by commas, semicolons, spaces, or newlines. For example, `swift,md` matches `.swift` and `.md` files. You can search by extension only without entering a filename query.
 
+In Contents mode, the search is equivalent to `find` enumerating regular files and running `grep` over them:
+
+```bash
+/usr/bin/find "/selected/folder" -type f -exec /usr/bin/grep -I -l --null -F -i -e "query" {} +
+```
+
+When Extensions are set in Contents mode, the `find` step filters files by extension before running `grep`.
+
 ### Searching Applications
 
-macOS apps are usually `.app` bundles, which the Unix filesystem treats as directories. If you search inside `/Applications`, keep Result type set to `Files and folders` or use `Folders/apps only`. A `Files only` search will not return `.app` bundles.
+macOS apps are usually `.app` bundles, which the Unix filesystem treats as directories. In Names mode, if you search inside `/Applications`, keep Result type set to `Files and folders` or use `Folders/apps only`. A `Files only` search will not return `.app` bundles.
 
 Some Apple/system apps may also live in `/System/Applications` instead of `/Applications`, so choose that folder if the app you expect is not found.
 

@@ -35,6 +35,9 @@ struct ContentView: View {
         .onChange(of: viewModel.autoSearchEnabled) {
             viewModel.scheduleAutoSearch()
         }
+        .onChange(of: viewModel.searchKind) {
+            viewModel.scheduleAutoSearch()
+        }
         .onChange(of: viewModel.searchTarget) {
             viewModel.scheduleAutoSearch()
         }
@@ -48,7 +51,7 @@ struct ContentView: View {
             Text("ScopedFind")
                 .font(.title2.weight(.semibold))
 
-            Text("Searches names only, not file contents. Recursively searches inside the chosen folder.")
+            Text("Searches file and folder names or file contents inside the chosen folder.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -73,7 +76,7 @@ struct ContentView: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                TextField("Name contains (not file contents)", text: $viewModel.query)
+                TextField(queryPlaceholder, text: $viewModel.query)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit {
                         viewModel.startSearch()
@@ -109,41 +112,51 @@ struct ContentView: View {
             .toggleStyle(.checkbox)
 
             HStack(spacing: 14) {
-                Picker("Result type", selection: $viewModel.searchTarget) {
-                    ForEach(SearchTarget.allCases) { target in
-                        Text(target.label).tag(target)
+                Picker("Search", selection: $viewModel.searchKind) {
+                    ForEach(SearchKind.allCases) { kind in
+                        Text(kind.label).tag(kind)
                     }
                 }
-                .pickerStyle(.menu)
-                .frame(width: 190)
+                .pickerStyle(.segmented)
+                .frame(width: 220)
 
-                HStack(spacing: 6) {
-                    Toggle("Fuzzy name matching", isOn: fuzzyNameMatchingBinding)
+                if viewModel.searchKind == .names {
+                    Picker("Result type", selection: $viewModel.searchTarget) {
+                        ForEach(SearchTarget.allCases) { target in
+                            Text(target.label).tag(target)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 190)
 
-                    Button {
-                        isShowingFuzzyHelp.toggle()
-                    } label: {
-                        Image(systemName: "questionmark.circle")
-                            .imageScale(.small)
-                            .foregroundStyle(.secondary)
-                            .padding(3)
-                            .contentShape(Rectangle())
+                    HStack(spacing: 6) {
+                        Toggle("Fuzzy name matching", isOn: fuzzyNameMatchingBinding)
+
+                        Button {
+                            isShowingFuzzyHelp.toggle()
+                        } label: {
+                            Image(systemName: "questionmark.circle")
+                                .imageScale(.small)
+                                .foregroundStyle(.secondary)
+                                .padding(3)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { isHovering in
+                            isShowingFuzzyHelp = isHovering
+                        }
+                        .popover(isPresented: $isShowingFuzzyHelp, arrowEdge: .top) {
+                            Text(fuzzyHelpText)
+                                .font(.callout)
+                                .padding(12)
+                                .frame(width: 280, alignment: .leading)
+                        }
+                        .help(fuzzyHelpText)
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("Fuzzy name matching help")
                     }
-                    .buttonStyle(.plain)
-                    .onHover { isHovering in
-                        isShowingFuzzyHelp = isHovering
-                    }
-                    .popover(isPresented: $isShowingFuzzyHelp, arrowEdge: .top) {
-                        Text(fuzzyHelpText)
-                            .font(.callout)
-                            .padding(12)
-                            .frame(width: 280, alignment: .leading)
-                    }
-                    .help(fuzzyHelpText)
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityLabel("Fuzzy name matching help")
+                    .toggleStyle(.checkbox)
                 }
-                .toggleStyle(.checkbox)
             }
         }
     }
@@ -199,6 +212,15 @@ struct ContentView: View {
 
     private var selectedFolderText: String {
         viewModel.selectedFolder?.path ?? "No folder selected. Search stays inside the folder you choose."
+    }
+
+    private var queryPlaceholder: String {
+        switch viewModel.searchKind {
+        case .names:
+            return "Name contains"
+        case .contents:
+            return "File contents contain"
+        }
     }
 
     private var shouldShowApplicationsWarning: Bool {

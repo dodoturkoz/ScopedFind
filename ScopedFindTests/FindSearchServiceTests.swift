@@ -143,6 +143,107 @@ final class FindSearchServiceTests: XCTestCase {
         XCTAssertEqual(results.map(\.url.path), [expected.path])
     }
 
+    func testServiceCanSearchFileContents() async throws {
+        let expected = temporaryFolder.appendingPathComponent("report.txt")
+        let nameOnlyMatch = temporaryFolder.appendingPathComponent("needle-name.txt")
+        try Data("The project needle is here.".utf8).write(to: expected)
+        try Data("plain text".utf8).write(to: nameOnlyMatch)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: false,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [expected.path])
+    }
+
+    func testContentSearchIsCaseInsensitiveByDefault() async throws {
+        let expected = temporaryFolder.appendingPathComponent("report.txt")
+        try Data("Needle".utf8).write(to: expected)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [expected.path])
+    }
+
+    func testContentSearchCanBeCaseSensitive() async throws {
+        let upper = temporaryFolder.appendingPathComponent("upper.txt")
+        let lower = temporaryFolder.appendingPathComponent("lower.txt")
+        try Data("Needle".utf8).write(to: upper)
+        try Data("needle".utf8).write(to: lower)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            caseSensitive: true,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [lower.path])
+    }
+
+    func testContentSearchCanBeFilteredByExtension() async throws {
+        let swiftFile = temporaryFolder.appendingPathComponent("Search.swift")
+        let textFile = temporaryFolder.appendingPathComponent("notes.txt")
+        try Data("needle".utf8).write(to: swiftFile)
+        try Data("needle".utf8).write(to: textFile)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "swift",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [swiftFile.path])
+    }
+
+    func testContentSearchExcludesHiddenPathsByDefault() async throws {
+        let visibleFile = temporaryFolder.appendingPathComponent("visible.txt")
+        let hiddenDirectory = temporaryFolder.appendingPathComponent(".hidden", isDirectory: true)
+        let hiddenFile = hiddenDirectory.appendingPathComponent("secret.txt")
+        try FileManager.default.createDirectory(at: hiddenDirectory, withIntermediateDirectories: true)
+        try Data("needle".utf8).write(to: visibleFile)
+        try Data("needle".utf8).write(to: hiddenFile)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: false,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [visibleFile.path])
+    }
+
+    func testContentSearchNoMatchesFinishesWithEmptyResults() async throws {
+        let file = temporaryFolder.appendingPathComponent("report.txt")
+        try Data("haystack".utf8).write(to: file)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(results, [])
+    }
+
     func testPermissionDeniedSurfacesWarningAndKeepsAccessibleResults() async throws {
         let visibleFile = temporaryFolder.appendingPathComponent("permission-note.txt")
         try Data().write(to: visibleFile)
@@ -165,7 +266,8 @@ final class FindSearchServiceTests: XCTestCase {
             caseSensitive: false,
             includeHidden: false,
             target: .all,
-            matchMode: .contains
+            matchMode: .contains,
+            searchKind: .names
         ) {
             switch event {
             case let .result(result):
@@ -182,9 +284,11 @@ final class FindSearchServiceTests: XCTestCase {
     private func collectResults(
         query: String,
         extensions: String,
+        caseSensitive: Bool = false,
         includeHidden: Bool,
         target: SearchTarget,
-        matchMode: SearchMatchMode = .contains
+        matchMode: SearchMatchMode = .contains,
+        searchKind: SearchKind = .names
     ) async throws -> [SearchResult] {
         var results: [SearchResult] = []
         let service = FindSearchService()
@@ -193,10 +297,11 @@ final class FindSearchServiceTests: XCTestCase {
             folder: temporaryFolder,
             query: query,
             extensions: extensions,
-            caseSensitive: false,
+            caseSensitive: caseSensitive,
             includeHidden: includeHidden,
             target: target,
-            matchMode: matchMode
+            matchMode: matchMode,
+            searchKind: searchKind
         ) {
             if case let .result(result) = event {
                 results.append(result)

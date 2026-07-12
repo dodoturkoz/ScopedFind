@@ -39,7 +39,8 @@ protocol FindSearching: AnyObject {
         caseSensitive: Bool,
         includeHidden: Bool,
         target: SearchTarget,
-        matchMode: SearchMatchMode
+        matchMode: SearchMatchMode,
+        searchKind: SearchKind
     ) -> AsyncThrowingStream<FindSearchEvent, Error>
 
     func cancel()
@@ -49,7 +50,7 @@ final class FindSearchService: FindSearching {
     private let builder: FindCommandBuilder
     private let executionQueue = DispatchQueue(label: "ScopedFind.find.execution", qos: .userInitiated)
     private let stdoutQueue = DispatchQueue(label: "ScopedFind.find.stdout", qos: .userInitiated)
-    private let stderrQueue = DispatchQueue(label: "ScopedFind.find.stderr", qos: .utility)
+    private let stderrQueue = DispatchQueue(label: "ScopedFind.find.stderr", qos: .userInitiated)
     private let lock = NSLock()
 
     private var currentProcess: Process?
@@ -66,7 +67,8 @@ final class FindSearchService: FindSearching {
         caseSensitive: Bool,
         includeHidden: Bool,
         target: SearchTarget,
-        matchMode: SearchMatchMode
+        matchMode: SearchMatchMode,
+        searchKind: SearchKind
     ) -> AsyncThrowingStream<FindSearchEvent, Error> {
         AsyncThrowingStream { continuation in
             executionQueue.async {
@@ -78,6 +80,7 @@ final class FindSearchService: FindSearching {
                     includeHidden: includeHidden,
                     target: target,
                     matchMode: matchMode,
+                    searchKind: searchKind,
                     continuation: continuation
                 )
             }
@@ -109,6 +112,7 @@ final class FindSearchService: FindSearching {
         includeHidden: Bool,
         target: SearchTarget,
         matchMode: SearchMatchMode,
+        searchKind: SearchKind,
         continuation: AsyncThrowingStream<FindSearchEvent, Error>.Continuation
     ) {
         do {
@@ -127,7 +131,8 @@ final class FindSearchService: FindSearching {
                 caseSensitive: caseSensitive,
                 includeHidden: includeHidden,
                 target: target,
-                matchMode: matchMode
+                matchMode: matchMode,
+                searchKind: searchKind
             )
 
             let process = Process()
@@ -224,7 +229,7 @@ final class FindSearchService: FindSearching {
             }
 
             let stderr = stderrCollector.value
-            if process.terminationStatus == 0 {
+            if command.treatsTerminationStatusAsSuccess(process.terminationStatus) {
                 yieldPermissionWarningIfNeeded(stderr, continuation: continuation)
                 continuation.finish()
             } else if stderr.localizedCaseInsensitiveContains("Permission denied") {

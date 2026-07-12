@@ -1,5 +1,23 @@
 import Foundation
 
+enum SearchKind: String, CaseIterable, Identifiable {
+    case names
+    case contents
+
+    var id: String {
+        rawValue
+    }
+
+    var label: String {
+        switch self {
+        case .names:
+            return "Names"
+        case .contents:
+            return "Contents"
+        }
+    }
+}
+
 enum SearchTarget: String, CaseIterable, Identifiable {
     case all
     case files

@@ -192,6 +192,77 @@ final class FindCommandBuilderTests: XCTestCase {
         XCTAssertEqual(command.arguments, [temporaryFolder.path, "(", "-iname", "*.weird\\[\\?\\]\\*", ")", "-print0"])
     }
 
+    func testContentCommandUsesFindExecGrep() throws {
+        let command = try FindCommandBuilder().makeCommand(
+            folder: temporaryFolder,
+            query: "needle",
+            extensions: "",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(command.executableURL.path, "/usr/bin/find")
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "-type", "f", "-exec", "/usr/bin/grep", "-I", "-l", "--null", "-F", "-i", "-e", "needle", "{}", "+"]
+        )
+        XCTAssertTrue(command.treatsTerminationStatusAsSuccess(0))
+        XCTAssertTrue(command.treatsTerminationStatusAsSuccess(1))
+    }
+
+    func testContentCommandCanBeCaseSensitive() throws {
+        let command = try FindCommandBuilder().makeCommand(
+            folder: temporaryFolder,
+            query: "Needle",
+            extensions: "",
+            caseSensitive: true,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "-type", "f", "-exec", "/usr/bin/grep", "-I", "-l", "--null", "-F", "-e", "Needle", "{}", "+"]
+        )
+    }
+
+    func testContentCommandPrunesHiddenPathsByDefault() throws {
+        let command = try FindCommandBuilder().makeCommand(
+            folder: temporaryFolder,
+            query: "needle",
+            extensions: "",
+            caseSensitive: false,
+            includeHidden: false,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "!", "-path", temporaryFolder.path, "-name", ".*", "-prune", "-o", "-type", "f", "-exec", "/usr/bin/grep", "-I", "-l", "--null", "-F", "-i", "-e", "needle", "{}", "+"]
+        )
+    }
+
+    func testContentCommandCombinesWithExtensionFilter() throws {
+        let command = try FindCommandBuilder().makeCommand(
+            folder: temporaryFolder,
+            query: "needle",
+            extensions: "swift md",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .directories,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "-type", "f", "(", "-iname", "*.swift", "-o", "-iname", "*.md", ")", "-exec", "/usr/bin/grep", "-I", "-l", "--null", "-F", "-i", "-e", "needle", "{}", "+"]
+        )
+    }
+
     func testEmptyQueryThrows() {
         XCTAssertThrowsError(
             try FindCommandBuilder().makeCommand(
@@ -204,6 +275,22 @@ final class FindCommandBuilderTests: XCTestCase {
             )
         ) { error in
             XCTAssertEqual(error as? FindCommandBuilderError, .emptyQuery)
+        }
+    }
+
+    func testContentSearchRequiresQueryEvenWithExtensions() {
+        XCTAssertThrowsError(
+            try FindCommandBuilder().makeCommand(
+                folder: temporaryFolder,
+                query: "   ",
+                extensions: "swift",
+                caseSensitive: false,
+                includeHidden: true,
+                target: .all,
+                searchKind: .contents
+            )
+        ) { error in
+            XCTAssertEqual(error as? FindCommandBuilderError, .emptyContentQuery)
         }
     }
 

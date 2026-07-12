@@ -32,6 +32,31 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.status, .searching)
     }
 
+    func testContentSearchRequiresQueryEvenWithExtension() {
+        let viewModel = SearchViewModel(searchService: MockFindSearchService())
+        viewModel.selectFolder(URL(fileURLWithPath: "/tmp"))
+        viewModel.searchKind = .contents
+        viewModel.extensionFilter = "swift"
+
+        viewModel.startSearch()
+
+        XCTAssertEqual(viewModel.status, .failed("Enter text to search file contents."))
+    }
+
+    func testContentSearchWithQueryIsValid() async throws {
+        let service = MockFindSearchService()
+        let viewModel = SearchViewModel(searchService: service)
+        viewModel.selectFolder(URL(fileURLWithPath: "/tmp"))
+        viewModel.searchKind = .contents
+        viewModel.query = "needle"
+
+        viewModel.startSearch()
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        XCTAssertEqual(viewModel.status, .searching)
+        XCTAssertEqual(service.lastSearchKind, .contents)
+    }
+
     func testCancellationState() {
         let service = MockFindSearchService()
         let viewModel = SearchViewModel(searchService: service)
@@ -78,6 +103,7 @@ final class SearchViewModelTests: XCTestCase {
 private final class MockFindSearchService: FindSearching {
     private(set) var didCancel = false
     private(set) var searchCallCount = 0
+    private(set) var lastSearchKind: SearchKind?
 
     func search(
         folder: URL,
@@ -86,9 +112,11 @@ private final class MockFindSearchService: FindSearching {
         caseSensitive: Bool,
         includeHidden: Bool,
         target: SearchTarget,
-        matchMode: SearchMatchMode
+        matchMode: SearchMatchMode,
+        searchKind: SearchKind
     ) -> AsyncThrowingStream<FindSearchEvent, Error> {
         searchCallCount += 1
+        lastSearchKind = searchKind
         return AsyncThrowingStream<FindSearchEvent, Error> { _ in }
     }
 

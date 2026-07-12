@@ -11,7 +11,7 @@ enum SearchStatus: Equatable {
     var message: String {
         switch self {
         case .idle:
-            return "Choose a folder and search by file or folder name."
+            return "Choose a folder and search by name or content."
         case .searching:
             return "Searching..."
         case let .finished(resultCount, warning):
@@ -35,6 +35,7 @@ final class SearchViewModel: ObservableObject {
     @Published var isCaseSensitive = false
     @Published var includeHiddenFiles = false
     @Published var autoSearchEnabled = true
+    @Published var searchKind: SearchKind = .names
     @Published var searchTarget: SearchTarget = .all
     @Published var matchMode: SearchMatchMode = .contains
     @Published private(set) var results: [SearchResult] = []
@@ -58,8 +59,13 @@ final class SearchViewModel: ObservableObject {
     }
 
     private var hasSearchCriteria: Bool {
-        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-            !FindCommandBuilder.normalizedExtensions(from: extensionFilter).isEmpty
+        switch searchKind {
+        case .names:
+            return !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                !FindCommandBuilder.normalizedExtensions(from: extensionFilter).isEmpty
+        case .contents:
+            return !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 
     init(
@@ -117,7 +123,7 @@ final class SearchViewModel: ObservableObject {
         }
 
         guard hasSearchCriteria else {
-            status = .failed("Enter a search term or extension before starting.")
+            status = .failed(emptyCriteriaMessage)
             return
         }
 
@@ -130,6 +136,7 @@ final class SearchViewModel: ObservableObject {
         let extensions = extensionFilter
         let caseSensitive = isCaseSensitive
         let includeHidden = includeHiddenFiles
+        let searchKind = searchKind
         let target = searchTarget
         let matchMode = matchMode
 
@@ -144,7 +151,8 @@ final class SearchViewModel: ObservableObject {
                     caseSensitive: caseSensitive,
                     includeHidden: includeHidden,
                     target: target,
-                    matchMode: matchMode
+                    matchMode: matchMode,
+                    searchKind: searchKind
                 ) {
                     switch event {
                     case let .result(result):
@@ -214,5 +222,14 @@ final class SearchViewModel: ObservableObject {
         }
 
         startSearch(cancelScheduledAutoSearch: false)
+    }
+
+    private var emptyCriteriaMessage: String {
+        switch searchKind {
+        case .names:
+            return "Enter a search term or extension before starting."
+        case .contents:
+            return "Enter text to search file contents."
+        }
     }
 }

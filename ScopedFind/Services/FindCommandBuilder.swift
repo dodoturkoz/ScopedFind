@@ -3,10 +3,26 @@ import Foundation
 struct FindCommand: Equatable {
     let executableURL: URL
     let arguments: [String]
+    let successfulTerminationStatuses: Set<Int32>
+
+    init(
+        executableURL: URL,
+        arguments: [String],
+        successfulTerminationStatuses: Set<Int32> = [0]
+    ) {
+        self.executableURL = executableURL
+        self.arguments = arguments
+        self.successfulTerminationStatuses = successfulTerminationStatuses
+    }
+
+    func treatsTerminationStatusAsSuccess(_ status: Int32) -> Bool {
+        successfulTerminationStatuses.contains(status)
+    }
 }
 
 enum FindCommandBuilderError: LocalizedError, Equatable {
     case emptyQuery
+    case emptyContentQuery
     case folderDoesNotExist
     case selectedPathIsNotFolder
 
@@ -14,6 +30,8 @@ enum FindCommandBuilderError: LocalizedError, Equatable {
         switch self {
         case .emptyQuery:
             return "Enter a search term or extension before starting."
+        case .emptyContentQuery:
+            return "Enter text to search file contents."
         case .folderDoesNotExist:
             return "The selected folder is no longer available."
         case .selectedPathIsNotFolder:
@@ -24,6 +42,7 @@ enum FindCommandBuilderError: LocalizedError, Equatable {
 
 struct FindCommandBuilder {
     static let executableURL = URL(fileURLWithPath: "/usr/bin/find")
+    static let grepExecutablePath = "/usr/bin/grep"
 
     func makeCommand(
         folder: URL,
@@ -32,13 +51,16 @@ struct FindCommandBuilder {
         caseSensitive: Bool,
         includeHidden: Bool,
         target: SearchTarget,
-        matchMode: SearchMatchMode = .contains
+        matchMode: SearchMatchMode = .contains,
+        searchKind: SearchKind = .names
     ) throws -> FindCommand {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedExtensions = Self.normalizedExtensions(from: extensions)
-        guard !trimmedQuery.isEmpty || !normalizedExtensions.isEmpty else {
-            throw FindCommandBuilderError.emptyQuery
-        }
+        try validateCriteria(
+            trimmedQuery: trimmedQuery,
+            normalizedExtensions: normalizedExtensions,
+            searchKind: searchKind
+        )
 
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory) else {
@@ -48,11 +70,59 @@ struct FindCommandBuilder {
             throw FindCommandBuilderError.selectedPathIsNotFolder
         }
 
+        switch searchKind {
+        case .names:
+            return makeNameCommand(
+                folder: folder,
+                query: trimmedQuery,
+                extensions: normalizedExtensions,
+                caseSensitive: caseSensitive,
+                includeHidden: includeHidden,
+                target: target,
+                matchMode: matchMode
+            )
+        case .contents:
+            return makeContentCommand(
+                folder: folder,
+                query: trimmedQuery,
+                extensions: normalizedExtensions,
+                caseSensitive: caseSensitive,
+                includeHidden: includeHidden
+            )
+        }
+    }
+
+    private func validateCriteria(
+        trimmedQuery: String,
+        normalizedExtensions: [String],
+        searchKind: SearchKind
+    ) throws {
+        switch searchKind {
+        case .names:
+            guard !trimmedQuery.isEmpty || !normalizedExtensions.isEmpty else {
+                throw FindCommandBuilderError.emptyQuery
+            }
+        case .contents:
+            guard !trimmedQuery.isEmpty else {
+                throw FindCommandBuilderError.emptyContentQuery
+            }
+        }
+    }
+
+    private func makeNameCommand(
+        folder: URL,
+        query: String,
+        extensions: [String],
+        caseSensitive: Bool,
+        includeHidden: Bool,
+        target: SearchTarget,
+        matchMode: SearchMatchMode
+    ) -> FindCommand {
         let namePredicate = caseSensitive ? "-name" : "-iname"
         let targetArguments = target.findTypeArgument.map { ["-type", $0] } ?? []
         let matchArguments = Self.matchArguments(
-            query: trimmedQuery,
-            extensions: normalizedExtensions,
+            query: query,
+            extensions: extensions,
             matchMode: matchMode,
             namePredicate: namePredicate
         )
@@ -66,6 +136,46 @@ struct FindCommandBuilder {
         }
 
         return FindCommand(executableURL: Self.executableURL, arguments: arguments)
+    }
+
+    private func makeContentCommand(
+        folder: URL,
+        query: String,
+        extensions: [String],
+        caseSensitive: Bool,
+        includeHidden: Bool
+    ) -> FindCommand {
+        let namePredicate = caseSensitive ? "-name" : "-iname"
+        let matchArguments = extensions.isEmpty ? [] : Self.extensionMatchArguments(
+            for: extensions,
+            namePredicate: namePredicate
+        )
+
+        var grepArguments = [
+            Self.grepExecutablePath,
+            "-I",
+            "-l",
+            "--null",
+            "-F"
+        ]
+        if !caseSensitive {
+            grepArguments.append("-i")
+        }
+        grepArguments += ["-e", query, "{}", "+"]
+
+        var arguments = [folder.path]
+        if includeHidden {
+            arguments += ["-type", "f"] + matchArguments + ["-exec"] + grepArguments
+        } else {
+            arguments += ["!", "-path", folder.path, "-name", ".*", "-prune", "-o"]
+            arguments += ["-type", "f"] + matchArguments + ["-exec"] + grepArguments
+        }
+
+        return FindCommand(
+            executableURL: Self.executableURL,
+            arguments: arguments,
+            successfulTerminationStatuses: [0, 1]
+        )
     }
 
     static func normalizedExtensions(from value: String) -> [String] {
