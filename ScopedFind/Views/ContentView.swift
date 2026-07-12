@@ -3,6 +3,9 @@ import AppKit
 
 struct ContentView: View {
     @StateObject private var viewModel = SearchViewModel()
+    @State private var isShowingFuzzyHelp = false
+
+    private let fuzzyHelpText = "Fuzzy matches typed characters in order. For example, sf finds ScopedFind."
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -106,15 +109,6 @@ struct ContentView: View {
             .toggleStyle(.checkbox)
 
             HStack(spacing: 14) {
-                Picker("Name match", selection: $viewModel.matchMode) {
-                    ForEach(SearchMatchMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 240)
-                .help(viewModel.matchMode.helpText)
-
                 Picker("Result type", selection: $viewModel.searchTarget) {
                     ForEach(SearchTarget.allCases) { target in
                         Text(target.label).tag(target)
@@ -122,6 +116,34 @@ struct ContentView: View {
                 }
                 .pickerStyle(.menu)
                 .frame(width: 190)
+
+                HStack(spacing: 6) {
+                    Toggle("Fuzzy name matching", isOn: fuzzyNameMatchingBinding)
+
+                    Button {
+                        isShowingFuzzyHelp.toggle()
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                            .imageScale(.small)
+                            .foregroundStyle(.secondary)
+                            .padding(3)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { isHovering in
+                        isShowingFuzzyHelp = isHovering
+                    }
+                    .popover(isPresented: $isShowingFuzzyHelp, arrowEdge: .top) {
+                        Text(fuzzyHelpText)
+                            .font(.callout)
+                            .padding(12)
+                            .frame(width: 280, alignment: .leading)
+                    }
+                    .help(fuzzyHelpText)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel("Fuzzy name matching help")
+                }
+                .toggleStyle(.checkbox)
             }
         }
     }
@@ -185,6 +207,14 @@ struct ContentView: View {
         }
 
         return selectedFolder.standardizedFileURL.lastPathComponent == "Applications"
+    }
+
+    private var fuzzyNameMatchingBinding: Binding<Bool> {
+        Binding {
+            viewModel.matchMode == .fuzzy
+        } set: { isEnabled in
+            viewModel.matchMode = isEnabled ? .fuzzy : .contains
+        }
     }
 
     private var statusColor: Color {

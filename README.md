@@ -35,7 +35,7 @@ Building from source is still available for users who prefer to inspect and comp
 - Native folder picker
 - Case-sensitive or case-insensitive filename search
 - Optional extension filtering, such as `swift`, `.pdf`, or `jpg,png`
-- Contains or fuzzy filename matching
+- Optional fuzzy filename matching
 - Searches file and folder names only, not file contents
 - Recursive search inside the selected folder
 - Result type filtering for files only, folders/apps only, or both
@@ -79,10 +79,17 @@ ScopedFind searches file and folder names only. It does not search inside docume
 
 When Auto search is enabled, ScopedFind starts a new search about 1.2 seconds after you stop typing or change a search option.
 
-The Name match control has two modes:
+By default, the name field uses contains matching:
 
-- Contains: `report` matches names containing `report`.
-- Fuzzy: `sf` matches names where `s` and `f` appear in that order, such as `ScopedFind`. Spaces in the query are ignored in fuzzy mode.
+- `report` matches names containing `report`.
+
+If Fuzzy name matching is enabled, ScopedFind matches names where the typed characters appear in order:
+
+- `sf` matches `ScopedFind`.
+- `rpt` can match `report-final.txt`.
+- Spaces in the query are ignored in fuzzy mode.
+
+Fuzzy name matching is still filename/folder-name search only. It is not typo correction, ranked `fzf` search, or file-content search.
 
 ## Why Not Finder Search?
 
