@@ -51,7 +51,7 @@ struct ContentView: View {
             Text("ScopedFind")
                 .font(.title2.weight(.semibold))
 
-            Text("Searches file and folder names or file contents inside the chosen folder.")
+            Text("Searches file names or file contents inside the chosen folder.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -127,7 +127,7 @@ struct ContentView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    .frame(width: 190)
+                    .frame(width: 230)
 
                     HStack(spacing: 6) {
                         Toggle("Fuzzy name matching", isOn: fuzzyNameMatchingBinding)
