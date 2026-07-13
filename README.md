@@ -10,18 +10,28 @@ It uses macOS's built-in `/usr/bin/find` and `/usr/bin/grep`, Apple's PDFKit, an
 
 Download the latest DMG from the [Releases](https://github.com/dodoturkoz/ScopedFind/releases) page.
 
-The release DMG is currently unsigned and not notarized. macOS may say the app is damaged or cannot be verified until you remove the download quarantine flag:
+Or install with Homebrew from the ScopedFind tap:
+
+```bash
+brew install --cask dodoturkoz/tap/scopedfind
+```
+
+The release DMG is currently unsigned and not notarized. That means macOS cannot verify the developer identity or check an Apple notarization ticket before first launch. Depending on your macOS version and security settings, it may say the app cannot be verified or is damaged.
+
+After installing the app, try Apple's normal override flow first:
 
 1. Open the DMG.
 2. Drag `ScopedFind.app` onto the `Applications` shortcut in the DMG window.
-3. Open Terminal.
-4. Run:
+3. Open `ScopedFind.app` from Applications.
+4. If macOS blocks it, open System Settings, go to Privacy & Security, and use Open Anyway if it is offered.
 
-    ```bash
-    xattr -dr com.apple.quarantine /Applications/ScopedFind.app
-    ```
+If macOS still reports that the app is damaged or cannot be verified, you can remove the download quarantine flag from the installed copy:
 
-5. Open `ScopedFind.app` normally from Applications.
+```bash
+xattr -dr com.apple.quarantine /Applications/ScopedFind.app
+```
+
+Then open `ScopedFind.app` normally from Applications.
 
 Only run the quarantine-removal command for an app copy you trust. It bypasses macOS's download warning for that installed copy of ScopedFind.
 
