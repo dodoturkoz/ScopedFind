@@ -27,6 +27,26 @@ enum SearchStatus: Equatable {
     }
 }
 
+struct SearchAutoSearchTrigger: Equatable {
+    var selectedFolder: URL?
+    var query: String
+    var extensionFilter: String
+    var isCaseSensitive: Bool
+    var includeHiddenFiles: Bool
+    var autoSearchEnabled: Bool
+    var searchKind: SearchKind
+    var searchTarget: SearchTarget
+    var matchMode: SearchMatchMode
+    var dateFilter: SearchDateFilter
+    var customDate: Date
+    var customEndDate: Date
+    var sizeFilter: SearchSizeFilter
+    var customSizeValue: String
+    var customSizeUnit: SearchSizeUnit
+    var customMaximumSizeValue: String
+    var customMaximumSizeUnit: SearchSizeUnit
+}
+
 @MainActor
 final class SearchViewModel: ObservableObject {
     @Published var selectedFolder: URL?
@@ -38,6 +58,14 @@ final class SearchViewModel: ObservableObject {
     @Published var searchKind: SearchKind = .names
     @Published var searchTarget: SearchTarget = .all
     @Published var matchMode: SearchMatchMode = .contains
+    @Published var dateFilter: SearchDateFilter = .any
+    @Published var customDate = Date()
+    @Published var customEndDate = Date()
+    @Published var sizeFilter: SearchSizeFilter = .any
+    @Published var customSizeValue = "1"
+    @Published var customSizeUnit: SearchSizeUnit = .megabytes
+    @Published var customMaximumSizeValue = "10"
+    @Published var customMaximumSizeUnit: SearchSizeUnit = .megabytes
     @Published private(set) var results: [SearchResult] = []
     @Published private(set) var status: SearchStatus = .idle
 
@@ -48,7 +76,7 @@ final class SearchViewModel: ObservableObject {
     private var latestWarning: String?
 
     var canSearch: Bool {
-        selectedFolder != nil && hasSearchCriteria && !isSearching
+        selectedFolder != nil && hasSearchCriteria && searchFilters.validationMessage == nil && !isSearching
     }
 
     var isSearching: Bool {
@@ -58,14 +86,48 @@ final class SearchViewModel: ObservableObject {
         return false
     }
 
+    var autoSearchTrigger: SearchAutoSearchTrigger {
+        SearchAutoSearchTrigger(
+            selectedFolder: selectedFolder,
+            query: query,
+            extensionFilter: extensionFilter,
+            isCaseSensitive: isCaseSensitive,
+            includeHiddenFiles: includeHiddenFiles,
+            autoSearchEnabled: autoSearchEnabled,
+            searchKind: searchKind,
+            searchTarget: searchTarget,
+            matchMode: matchMode,
+            dateFilter: dateFilter,
+            customDate: customDate,
+            customEndDate: customEndDate,
+            sizeFilter: sizeFilter,
+            customSizeValue: customSizeValue,
+            customSizeUnit: customSizeUnit,
+            customMaximumSizeValue: customMaximumSizeValue,
+            customMaximumSizeUnit: customMaximumSizeUnit
+        )
+    }
+
     private var hasSearchCriteria: Bool {
         switch searchKind {
         case .names:
             return !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                !FindCommandBuilder.normalizedExtensions(from: extensionFilter).isEmpty
+                !FindCommandBuilder.normalizedExtensions(from: extensionFilter).isEmpty ||
+                searchFilters.isActive
         case .contents:
             return !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+    }
+
+    private var searchFilters: SearchFilters {
+        SearchFilters(
+            dateFilter: dateFilter,
+            customDate: customDate,
+            customEndDate: customEndDate,
+            sizeFilter: sizeFilter,
+            customSizeBytes: customSizeUnit.byteCount(from: customSizeValue),
+            customMaximumSizeBytes: customMaximumSizeUnit.byteCount(from: customMaximumSizeValue)
+        )
     }
 
     init(
@@ -87,7 +149,10 @@ final class SearchViewModel: ObservableObject {
         autoSearchTask?.cancel()
         autoSearchTask = nil
 
-        guard autoSearchEnabled, selectedFolder != nil, hasSearchCriteria else {
+        guard autoSearchEnabled,
+              selectedFolder != nil,
+              hasSearchCriteria,
+              searchFilters.validationMessage == nil else {
             return
         }
 
@@ -127,6 +192,12 @@ final class SearchViewModel: ObservableObject {
             return
         }
 
+        let filters = searchFilters
+        if let validationMessage = filters.validationMessage {
+            status = .failed(validationMessage)
+            return
+        }
+
         results.removeAll()
         latestWarning = nil
         status = .searching
@@ -139,6 +210,12 @@ final class SearchViewModel: ObservableObject {
         let searchKind = searchKind
         let target = searchTarget
         let matchMode = matchMode
+        let dateFilter = filters.dateFilter
+        let customDate = filters.customDate
+        let customEndDate = filters.customEndDate
+        let sizeFilter = filters.sizeFilter
+        let customSizeBytes = filters.customSizeBytes
+        let customMaximumSizeBytes = filters.customMaximumSizeBytes
 
         searchTask = Task {
             do {
@@ -152,6 +229,12 @@ final class SearchViewModel: ObservableObject {
                     includeHidden: includeHidden,
                     target: target,
                     matchMode: matchMode,
+                    dateFilter: dateFilter,
+                    customDate: customDate,
+                    customEndDate: customEndDate,
+                    sizeFilter: sizeFilter,
+                    customSizeBytes: customSizeBytes,
+                    customMaximumSizeBytes: customMaximumSizeBytes,
                     searchKind: searchKind
                 ) {
                     switch event {
@@ -204,7 +287,10 @@ final class SearchViewModel: ObservableObject {
     }
 
     private func startAutomaticSearch() {
-        guard autoSearchEnabled, selectedFolder != nil, hasSearchCriteria else {
+        guard autoSearchEnabled,
+              selectedFolder != nil,
+              hasSearchCriteria,
+              searchFilters.validationMessage == nil else {
             return
         }
 
@@ -227,7 +313,7 @@ final class SearchViewModel: ObservableObject {
     private var emptyCriteriaMessage: String {
         switch searchKind {
         case .names:
-            return "Enter a search term or extension before starting."
+            return "Enter a search term, extension, date filter, or size filter before starting."
         case .contents:
             return "Enter text to search file contents."
         }

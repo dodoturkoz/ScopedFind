@@ -3,11 +3,15 @@ import AppKit
 
 struct ContentView: View {
     @StateObject private var viewModel = SearchViewModel()
-    @State private var isShowingFuzzyHelp = false
-
-    private let fuzzyHelpText = "Fuzzy matches typed characters in order. For example, sf finds ScopedFind."
 
     var body: some View {
+        mainLayout
+            .onChange(of: viewModel.autoSearchTrigger) {
+                viewModel.scheduleAutoSearch()
+            }
+    }
+
+    private var mainLayout: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
             controls
@@ -17,33 +21,6 @@ struct ContentView: View {
         }
         .padding(20)
         .frame(minWidth: 760, minHeight: 520)
-        .onChange(of: viewModel.selectedFolder) {
-            viewModel.scheduleAutoSearch()
-        }
-        .onChange(of: viewModel.query) {
-            viewModel.scheduleAutoSearch()
-        }
-        .onChange(of: viewModel.extensionFilter) {
-            viewModel.scheduleAutoSearch()
-        }
-        .onChange(of: viewModel.isCaseSensitive) {
-            viewModel.scheduleAutoSearch()
-        }
-        .onChange(of: viewModel.includeHiddenFiles) {
-            viewModel.scheduleAutoSearch()
-        }
-        .onChange(of: viewModel.autoSearchEnabled) {
-            viewModel.scheduleAutoSearch()
-        }
-        .onChange(of: viewModel.searchKind) {
-            viewModel.scheduleAutoSearch()
-        }
-        .onChange(of: viewModel.searchTarget) {
-            viewModel.scheduleAutoSearch()
-        }
-        .onChange(of: viewModel.matchMode) {
-            viewModel.scheduleAutoSearch()
-        }
     }
 
     private var header: some View {
@@ -111,54 +88,165 @@ struct ContentView: View {
             }
             .toggleStyle(.checkbox)
 
-            HStack(spacing: 14) {
-                Picker("Search", selection: $viewModel.searchKind) {
-                    ForEach(SearchKind.allCases) { kind in
-                        Text(kind.label).tag(kind)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 220)
+            searchModeControls
+            filterControls
+        }
+    }
 
-                if viewModel.searchKind == .names {
-                    Picker("Result type", selection: $viewModel.searchTarget) {
-                        ForEach(SearchTarget.allCases) { target in
-                            Text(target.label).tag(target)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .frame(width: 230)
-
-                    HStack(spacing: 6) {
-                        Toggle("Fuzzy name matching", isOn: fuzzyNameMatchingBinding)
-
-                        Button {
-                            isShowingFuzzyHelp.toggle()
-                        } label: {
-                            Image(systemName: "questionmark.circle")
-                                .imageScale(.small)
-                                .foregroundStyle(.secondary)
-                                .padding(3)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .onHover { isHovering in
-                            isShowingFuzzyHelp = isHovering
-                        }
-                        .popover(isPresented: $isShowingFuzzyHelp, arrowEdge: .top) {
-                            Text(fuzzyHelpText)
-                                .font(.callout)
-                                .padding(12)
-                                .frame(width: 280, alignment: .leading)
-                        }
-                        .help(fuzzyHelpText)
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityLabel("Fuzzy name matching help")
-                    }
-                    .toggleStyle(.checkbox)
+    private var searchModeControls: some View {
+        HStack(spacing: 14) {
+            Picker("Search", selection: $viewModel.searchKind) {
+                ForEach(SearchKind.allCases) { kind in
+                    Text(kind.label).tag(kind)
                 }
             }
+            .pickerStyle(.segmented)
+            .frame(width: 220)
+
+            if viewModel.searchKind == .names {
+                Picker("Result type", selection: $viewModel.searchTarget) {
+                    ForEach(SearchTarget.allCases) { target in
+                        Text(target.label).tag(target)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 250)
+
+                Picker("Name match", selection: $viewModel.matchMode) {
+                    ForEach(SearchMatchMode.allCases) { matchMode in
+                        Text(matchMode.label).tag(matchMode)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 220)
+                .help(viewModel.matchMode.helpText)
+            }
         }
+    }
+
+    private var filterControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            modifiedFilterControls
+            sizeFilterControls
+        }
+    }
+
+    private var modifiedFilterControls: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 10) {
+                Picker("Modified", selection: $viewModel.dateFilter) {
+                    ForEach(SearchDateFilter.allCases) { dateFilter in
+                        Text(dateFilter.label).tag(dateFilter)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 240)
+
+                customDateControls
+            }
+
+            if viewModel.dateFilter.usesCustomDate {
+                Text("Date format: day / month / year.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var customDateControls: some View {
+        if viewModel.dateFilter.usesCustomDate {
+            if viewModel.dateFilter.usesCustomEndDate {
+                Text("From")
+                    .foregroundStyle(.secondary)
+
+                NativeDatePicker(
+                    selection: $viewModel.customDate,
+                    accessibilityLabel: "Start date"
+                )
+                .frame(width: 96, height: 22)
+
+                Text("through")
+                    .foregroundStyle(.secondary)
+
+                NativeDatePicker(
+                    selection: $viewModel.customEndDate,
+                    accessibilityLabel: "End date"
+                )
+                .frame(width: 96, height: 22)
+            } else {
+                NativeDatePicker(
+                    selection: $viewModel.customDate,
+                    accessibilityLabel: "Date"
+                )
+                .frame(width: 96, height: 22)
+            }
+        }
+    }
+
+    private var sizeFilterControls: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 10) {
+                Picker("Size", selection: $viewModel.sizeFilter) {
+                    ForEach(SearchSizeFilter.allCases) { sizeFilter in
+                        Text(sizeFilter.label).tag(sizeFilter)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 220)
+
+                customSizeControls
+            }
+
+            Text("Decimal units: 1 KB = 1,000 bytes; MB and GB are decimal too.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var customSizeControls: some View {
+        if viewModel.sizeFilter.usesCustomSize {
+            if viewModel.sizeFilter.usesCustomMaximumSize {
+                Text("Min incl.")
+                    .foregroundStyle(.secondary)
+
+                customSizeField("Min", text: $viewModel.customSizeValue)
+
+                sizeUnitPicker("Min unit", selection: $viewModel.customSizeUnit)
+
+                Text("Max incl.")
+                    .foregroundStyle(.secondary)
+
+                customSizeField("Max", text: $viewModel.customMaximumSizeValue)
+
+                sizeUnitPicker("Max unit", selection: $viewModel.customMaximumSizeUnit)
+            } else {
+                customSizeField("Size", text: $viewModel.customSizeValue)
+                sizeUnitPicker("Unit", selection: $viewModel.customSizeUnit)
+            }
+        }
+    }
+
+    private func customSizeField(_ placeholder: String, text: Binding<String>) -> some View {
+        TextField(placeholder, text: text)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 80)
+            .onSubmit {
+                viewModel.startSearch()
+            }
+    }
+
+    private func sizeUnitPicker(_ label: String, selection: Binding<SearchSizeUnit>) -> some View {
+        Picker(label, selection: selection) {
+            ForEach(SearchSizeUnit.allCases) { unit in
+                Text(unit.label).tag(unit)
+            }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .accessibilityLabel(label)
+        .frame(width: 72)
     }
 
     private var resultsList: some View {
@@ -217,7 +305,14 @@ struct ContentView: View {
     private var queryPlaceholder: String {
         switch viewModel.searchKind {
         case .names:
-            return "Name contains"
+            switch viewModel.matchMode {
+            case .contains:
+                return "Name contains"
+            case .regex:
+                return "Name regex"
+            case .fuzzy:
+                return "Fuzzy name"
+            }
         case .contents:
             return "File contents contain"
         }
@@ -229,14 +324,6 @@ struct ContentView: View {
         }
 
         return selectedFolder.standardizedFileURL.lastPathComponent == "Applications"
-    }
-
-    private var fuzzyNameMatchingBinding: Binding<Bool> {
-        Binding {
-            viewModel.matchMode == .fuzzy
-        } set: { isEnabled in
-            viewModel.matchMode = isEnabled ? .fuzzy : .contains
-        }
     }
 
     private var statusColor: Color {
@@ -274,5 +361,49 @@ struct ContentView: View {
     private func copyPath(_ result: SearchResult) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(result.url.path, forType: .string)
+    }
+}
+
+private struct NativeDatePicker: NSViewRepresentable {
+    @Binding var selection: Date
+    let accessibilityLabel: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(selection: $selection)
+    }
+
+    func makeNSView(context: Context) -> NSDatePicker {
+        let datePicker = NSDatePicker()
+        datePicker.datePickerStyle = .textFieldAndStepper
+        datePicker.datePickerElements = .yearMonthDay
+        datePicker.locale = Locale(identifier: "en_GB")
+        datePicker.dateValue = selection
+        datePicker.target = context.coordinator
+        datePicker.action = #selector(Coordinator.dateChanged(_:))
+        datePicker.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        datePicker.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        datePicker.setAccessibilityLabel(accessibilityLabel)
+        return datePicker
+    }
+
+    func updateNSView(_ datePicker: NSDatePicker, context: Context) {
+        context.coordinator.selection = $selection
+        datePicker.locale = Locale(identifier: "en_GB")
+        if datePicker.dateValue != selection {
+            datePicker.dateValue = selection
+        }
+        datePicker.setAccessibilityLabel(accessibilityLabel)
+    }
+
+    final class Coordinator: NSObject {
+        var selection: Binding<Date>
+
+        init(selection: Binding<Date>) {
+            self.selection = selection
+        }
+
+        @objc func dateChanged(_ sender: NSDatePicker) {
+            selection.wrappedValue = sender.dateValue
+        }
     }
 }

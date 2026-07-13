@@ -146,6 +146,197 @@ final class FindSearchServiceTests: XCTestCase {
         XCTAssertEqual(results.map(\.url.path), [expected.path])
     }
 
+    func testServiceCanSearchNamesWithRegex() async throws {
+        let expected = temporaryFolder.appendingPathComponent("report-2026.txt")
+        let nonMatch = temporaryFolder.appendingPathComponent("report-final.txt")
+        try Data().write(to: expected)
+        try Data().write(to: nonMatch)
+
+        let results = try await collectResults(
+            query: "report-[0-9]+\\.txt",
+            extensions: "",
+            includeHidden: true,
+            target: .files,
+            matchMode: .regex
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [expected.path])
+    }
+
+    func testRegexNameSearchIsCaseInsensitiveByDefault() async throws {
+        let expected = temporaryFolder.appendingPathComponent("Report.TXT")
+        try Data().write(to: expected)
+
+        let results = try await collectResults(
+            query: "report\\.txt",
+            extensions: "",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .files,
+            matchMode: .regex
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [expected.path])
+    }
+
+    func testInvalidRegexNameSearchFailsClearly() async throws {
+        do {
+            _ = try await collectResults(
+                query: "[",
+                extensions: "",
+                includeHidden: true,
+                target: .files,
+                matchMode: .regex
+            )
+            XCTFail("Expected invalid regex to throw.")
+        } catch let error as FindSearchServiceError {
+            guard case .invalidRegularExpression = error else {
+                XCTFail("Expected invalidRegularExpression, got \(error).")
+                return
+            }
+        }
+    }
+
+    func testNameSearchCanFilterByModifiedDate() async throws {
+        let recent = temporaryFolder.appendingPathComponent("recent.txt")
+        let old = temporaryFolder.appendingPathComponent("old.txt")
+        try Data().write(to: recent)
+        try Data().write(to: old)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-2 * 60 * 60)],
+            ofItemAtPath: old.path
+        )
+
+        let results = try await collectResults(
+            query: "",
+            extensions: "txt",
+            includeHidden: true,
+            target: .files,
+            dateFilter: .modifiedLastHour
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [recent.path])
+    }
+
+    func testNameSearchCanFilterByExactModifiedDate() async throws {
+        let expected = temporaryFolder.appendingPathComponent("expected.txt")
+        let other = temporaryFolder.appendingPathComponent("other.txt")
+        try Data().write(to: expected)
+        try Data().write(to: other)
+
+        let calendar = Calendar.current
+        let customDate = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 12)))
+        let matchingDate = try XCTUnwrap(calendar.date(bySettingHour: 12, minute: 0, second: 0, of: customDate))
+        let otherDate = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: matchingDate))
+        try FileManager.default.setAttributes([.modificationDate: matchingDate], ofItemAtPath: expected.path)
+        try FileManager.default.setAttributes([.modificationDate: otherDate], ofItemAtPath: other.path)
+
+        let results = try await collectResults(
+            query: "",
+            extensions: "txt",
+            includeHidden: true,
+            target: .files,
+            dateFilter: .modifiedOnDate,
+            customDate: customDate
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [expected.path])
+    }
+
+    func testNameSearchCanFilterByInclusiveModifiedDateRange() async throws {
+        let startBoundary = temporaryFolder.appendingPathComponent("start.txt")
+        let endBoundary = temporaryFolder.appendingPathComponent("end.txt")
+        let before = temporaryFolder.appendingPathComponent("before.txt")
+        let after = temporaryFolder.appendingPathComponent("after.txt")
+        try Data().write(to: startBoundary)
+        try Data().write(to: endBoundary)
+        try Data().write(to: before)
+        try Data().write(to: after)
+
+        let calendar = Calendar.current
+        let startDate = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 12)))
+        let endDate = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 14)))
+        let startMoment = try XCTUnwrap(calendar.date(bySettingHour: 0, minute: 0, second: 0, of: startDate))
+        let endMoment = try XCTUnwrap(calendar.date(bySettingHour: 23, minute: 59, second: 0, of: endDate))
+        let beforeMoment = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: startMoment))
+        let afterMoment = try XCTUnwrap(calendar.date(byAdding: .minute, value: 2, to: endMoment))
+
+        try FileManager.default.setAttributes([.modificationDate: startMoment], ofItemAtPath: startBoundary.path)
+        try FileManager.default.setAttributes([.modificationDate: endMoment], ofItemAtPath: endBoundary.path)
+        try FileManager.default.setAttributes([.modificationDate: beforeMoment], ofItemAtPath: before.path)
+        try FileManager.default.setAttributes([.modificationDate: afterMoment], ofItemAtPath: after.path)
+
+        let results = try await collectResults(
+            query: "",
+            extensions: "txt",
+            includeHidden: true,
+            target: .files,
+            dateFilter: .modifiedBetweenDates,
+            customDate: startDate,
+            customEndDate: endDate
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([startBoundary.path, endBoundary.path]))
+    }
+
+    func testNameSearchCanFilterBySize() async throws {
+        let large = temporaryFolder.appendingPathComponent("large.bin")
+        let small = temporaryFolder.appendingPathComponent("small.bin")
+        try Data(count: 1_200_000).write(to: large)
+        try Data(count: 20).write(to: small)
+
+        let results = try await collectResults(
+            query: "",
+            extensions: "bin",
+            includeHidden: true,
+            target: .files,
+            sizeFilter: .largerThan1MB
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [large.path])
+    }
+
+    func testNameSearchCanFilterByExactSize() async throws {
+        let expected = temporaryFolder.appendingPathComponent("forty-two.bin")
+        let other = temporaryFolder.appendingPathComponent("forty-three.bin")
+        try Data(count: 42).write(to: expected)
+        try Data(count: 43).write(to: other)
+
+        let results = try await collectResults(
+            query: "",
+            extensions: "bin",
+            includeHidden: true,
+            target: .files,
+            sizeFilter: .exactCustom,
+            customSizeBytes: 42
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [expected.path])
+    }
+
+    func testNameSearchCanFilterByInclusiveSizeRange() async throws {
+        let lowerBoundary = temporaryFolder.appendingPathComponent("lower.bin")
+        let upperBoundary = temporaryFolder.appendingPathComponent("upper.bin")
+        let tooSmall = temporaryFolder.appendingPathComponent("small.bin")
+        let tooLarge = temporaryFolder.appendingPathComponent("large.bin")
+        try Data(count: 42).write(to: lowerBoundary)
+        try Data(count: 43).write(to: upperBoundary)
+        try Data(count: 41).write(to: tooSmall)
+        try Data(count: 44).write(to: tooLarge)
+
+        let results = try await collectResults(
+            query: "",
+            extensions: "bin",
+            includeHidden: true,
+            target: .files,
+            sizeFilter: .betweenCustom,
+            customSizeBytes: 42,
+            customMaximumSizeBytes: 43
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([lowerBoundary.path, upperBoundary.path]))
+    }
+
     func testNameSearchCanMatchTurkishDiacriticsWhenCaseInsensitive() async throws {
         let expected = temporaryFolder.appendingPathComponent("şevketibostan.txt")
         try Data().write(to: expected)
@@ -289,6 +480,48 @@ final class FindSearchServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(results.map(\.url.path), [swiftFile.path])
+    }
+
+    func testContentSearchCanBeFilteredByModifiedDate() async throws {
+        let recent = temporaryFolder.appendingPathComponent("recent.txt")
+        let old = temporaryFolder.appendingPathComponent("old.txt")
+        try Data("needle".utf8).write(to: recent)
+        try Data("needle".utf8).write(to: old)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-2 * 60 * 60)],
+            ofItemAtPath: old.path
+        )
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents,
+            dateFilter: .modifiedLastHour
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([recent.path]))
+    }
+
+    func testContentSearchCanBeFilteredBySize() async throws {
+        let large = temporaryFolder.appendingPathComponent("large.txt")
+        let small = temporaryFolder.appendingPathComponent("small.txt")
+        var largeData = Data("needle\n".utf8)
+        largeData.append(Data(String(repeating: "x", count: 1_200_000).utf8))
+        try largeData.write(to: large)
+        try Data("needle".utf8).write(to: small)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents,
+            sizeFilter: .largerThan1MB
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([large.path]))
     }
 
     func testContentSearchExcludesHiddenPathsByDefault() async throws {
@@ -586,6 +819,12 @@ final class FindSearchServiceTests: XCTestCase {
             includeHidden: false,
             target: .all,
             matchMode: .contains,
+            dateFilter: .any,
+            customDate: nil,
+            customEndDate: nil,
+            sizeFilter: .any,
+            customSizeBytes: nil,
+            customMaximumSizeBytes: nil,
             searchKind: .names
         ) {
             switch event {
@@ -607,7 +846,13 @@ final class FindSearchServiceTests: XCTestCase {
         includeHidden: Bool,
         target: SearchTarget,
         matchMode: SearchMatchMode = .contains,
-        searchKind: SearchKind = .names
+        searchKind: SearchKind = .names,
+        dateFilter: SearchDateFilter = .any,
+        customDate: Date? = nil,
+        customEndDate: Date? = nil,
+        sizeFilter: SearchSizeFilter = .any,
+        customSizeBytes: UInt64? = nil,
+        customMaximumSizeBytes: UInt64? = nil
     ) async throws -> [SearchResult] {
         var results: [SearchResult] = []
         let service = FindSearchService()
@@ -620,6 +865,12 @@ final class FindSearchServiceTests: XCTestCase {
             includeHidden: includeHidden,
             target: target,
             matchMode: matchMode,
+            dateFilter: dateFilter,
+            customDate: customDate,
+            customEndDate: customEndDate,
+            sizeFilter: sizeFilter,
+            customSizeBytes: customSizeBytes,
+            customMaximumSizeBytes: customMaximumSizeBytes,
             searchKind: searchKind
         ) {
             if case let .result(result) = event {

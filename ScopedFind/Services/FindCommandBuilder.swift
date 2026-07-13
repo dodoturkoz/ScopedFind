@@ -319,7 +319,7 @@ struct FindCommandBuilder {
     ) -> [String] {
         var arguments: [String] = []
 
-        if !query.isEmpty {
+        if !query.isEmpty && matchMode != .regex {
             arguments += [namePredicate, namePattern(for: query, matchMode: matchMode)]
         }
 
@@ -334,6 +334,8 @@ struct FindCommandBuilder {
         switch matchMode {
         case .contains:
             return "*\(escapedFindPatternComponent(query))*"
+        case .regex:
+            return "*"
         case .fuzzy:
             return fuzzyFindPatternComponent(query)
         }

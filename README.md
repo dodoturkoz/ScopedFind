@@ -30,21 +30,21 @@ Only run the quarantine-removal command for an app copy you trust. It bypasses m
 - Dependency-free native SwiftUI app for scoped local search
 - Separate Names and Contents modes
 - Contents search for regular text files, text-based PDFs, and `.docx` files
-- Extension filters such as `swift`, `.pdf`, `.docx`, or `jpg,png`
-- Case-sensitive search, Unicode-aware fallback matching, hidden-file search, and fuzzy filename matching
+- Extension, preset/custom modified-time, preset/custom size, result-type, case-sensitivity, and hidden-file filters
+- Unicode-aware fallback matching plus contains, regex, and fuzzy filename matching
 - Streaming, cancellable results with Open, Reveal in Finder, and Copy Path actions
 
 ## Search Behavior
 
 Searches are recursive and stay inside the folder you choose.
 
-Names mode searches file and folder names with `/usr/bin/find`. By default it uses contains matching, so `report` matches names containing `report`. Fuzzy name matching can also match ordered characters, so `sf` can match `ScopedFind` and `rpt` can match `report-final.txt`. Fuzzy matching is only for file and folder names; it is not typo correction, ranked `fzf` search, or content search.
+Names mode searches file and folder names with `/usr/bin/find`. By default it uses contains matching, so `report` matches names containing `report`. Regex matching uses regular expressions against names, and fuzzy matching can match ordered characters, so `sf` can match `ScopedFind` and `rpt` can match `report-final.txt`. Regex and fuzzy matching are only for file and folder names; fuzzy matching is not typo correction, ranked `fzf` search, or content search.
 
 Contents mode searches regular files with `/usr/bin/grep`, text-based PDFs with PDFKit, and `.docx` Word document text with the in-process DOCX reader. The query is literal text, not a regular expression. Scanned or image-only PDFs are not OCRed, and legacy `.doc` files are not supported.
 
 When Case sensitive is off, ScopedFind adds Unicode-aware, diacritic-insensitive fallback matching for names and supported file contents. For example, `sevket` can match `şevket`. Case-sensitive searches stay literal.
 
-The Extensions field accepts extensions with or without a leading dot, separated by commas, semicolons, spaces, or newlines. In Names mode, you can search by extension only. In Contents mode, a text query is required.
+The Extensions field accepts extensions with or without a leading dot, separated by commas, semicolons, spaces, or newlines. Modified and Size filters use filesystem attributes and work in both modes. Custom modified-date filters support on, before, since, and inclusive between checks for chosen calendar dates. Custom size filters support less than, more than, exact byte size, and inclusive between checks after unit conversion. KB, MB, and GB use decimal units (for example, 1 KB is 1,000 bytes); use B for an exact byte count. In Names mode, you can search by extension, modified time, or size without a text query. In Contents mode, a text query is required.
 
 ## How It Searches
 
@@ -55,6 +55,8 @@ Names mode is equivalent to:
 ```bash
 /usr/bin/find "/selected/folder" -iname "*query*"
 ```
+
+Regex name matching, Unicode fallback matching, and modified/size filters are applied in process using Foundation APIs.
 
 Contents mode uses `find` plus literal `grep` for regular files:
 
@@ -94,7 +96,7 @@ Finder and Spotlight are excellent for broad macOS search, but they often combin
 | Find by filename only | Can mix filename and content matches | Names mode searches names only |
 | Search file text without Spotlight | Depends on indexing and metadata behavior | Uses `grep`, PDFKit, and the DOCX reader directly |
 | Search exactly one chosen folder tree | Can be broad depending on scope | Stays inside the folder you choose |
-| Filter by extension | Possible, but not always obvious | Dedicated Extensions field |
+| Filter by extension, modified time, or size | Possible, but not always obvious | Dedicated filter controls |
 | Find apps in `/Applications` | Can be mixed with other result types | Use Names mode with `Files and folders` or `Folders/apps only` |
 
 ## Folder Access

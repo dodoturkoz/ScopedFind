@@ -13,6 +13,8 @@ enum FindSearchServiceError: LocalizedError, Equatable {
     case failedToStart(String)
     case nonZeroTermination(status: Int32, message: String?)
     case unreadableOutput
+    case invalidRegularExpression(String)
+    case invalidSearchFilter(String)
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +31,10 @@ enum FindSearchServiceError: LocalizedError, Equatable {
             return "The search command stopped with status \(status)."
         case .unreadableOutput:
             return "The search returned output that could not be read."
+        case let .invalidRegularExpression(message):
+            return "Enter a valid regular expression: \(message)"
+        case let .invalidSearchFilter(message):
+            return message
         }
     }
 }
@@ -42,6 +48,12 @@ protocol FindSearching: AnyObject {
         includeHidden: Bool,
         target: SearchTarget,
         matchMode: SearchMatchMode,
+        dateFilter: SearchDateFilter,
+        customDate: Date?,
+        customEndDate: Date?,
+        sizeFilter: SearchSizeFilter,
+        customSizeBytes: UInt64?,
+        customMaximumSizeBytes: UInt64?,
         searchKind: SearchKind
     ) -> AsyncThrowingStream<FindSearchEvent, Error>
 
@@ -71,6 +83,12 @@ final class FindSearchService: FindSearching {
         includeHidden: Bool,
         target: SearchTarget,
         matchMode: SearchMatchMode,
+        dateFilter: SearchDateFilter,
+        customDate: Date?,
+        customEndDate: Date?,
+        sizeFilter: SearchSizeFilter,
+        customSizeBytes: UInt64?,
+        customMaximumSizeBytes: UInt64?,
         searchKind: SearchKind
     ) -> AsyncThrowingStream<FindSearchEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -83,6 +101,12 @@ final class FindSearchService: FindSearching {
                     includeHidden: includeHidden,
                     target: target,
                     matchMode: matchMode,
+                    dateFilter: dateFilter,
+                    customDate: customDate,
+                    customEndDate: customEndDate,
+                    sizeFilter: sizeFilter,
+                    customSizeBytes: customSizeBytes,
+                    customMaximumSizeBytes: customMaximumSizeBytes,
                     searchKind: searchKind,
                     continuation: continuation
                 )
@@ -115,6 +139,12 @@ final class FindSearchService: FindSearching {
         includeHidden: Bool,
         target: SearchTarget,
         matchMode: SearchMatchMode,
+        dateFilter: SearchDateFilter,
+        customDate: Date?,
+        customEndDate: Date?,
+        sizeFilter: SearchSizeFilter,
+        customSizeBytes: UInt64?,
+        customMaximumSizeBytes: UInt64?,
         searchKind: SearchKind,
         continuation: AsyncThrowingStream<FindSearchEvent, Error>.Continuation
     ) {
@@ -128,66 +158,118 @@ final class FindSearchService: FindSearching {
             }
 
             let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            let filters = SearchFilters(
+                dateFilter: dateFilter,
+                customDate: customDate,
+                customEndDate: customEndDate,
+                sizeFilter: sizeFilter,
+                customSizeBytes: customSizeBytes,
+                customMaximumSizeBytes: customMaximumSizeBytes
+            )
+            if let validationMessage = filters.validationMessage {
+                throw FindSearchServiceError.invalidSearchFilter(validationMessage)
+            }
+            let normalizedExtensions = FindCommandBuilder.normalizedExtensions(from: extensions)
+            if searchKind == .names && trimmedQuery.isEmpty && normalizedExtensions.isEmpty && !filters.isActive {
+                throw FindCommandBuilderError.emptyQuery
+            }
 
             switch searchKind {
             case .names:
                 let deduper = SearchResultDeduper()
                 let yieldNameResult: (URL) -> Void = { url in
-                    if deduper.shouldYield(url) {
+                    if filters.matches(url) && deduper.shouldYield(url) {
                         continuation.yield(.result(SearchResult(url: url)))
                     }
                 }
-                let command = try builder.makeCommand(
-                    folder: folder,
-                    query: query,
-                    extensions: extensions,
-                    caseSensitive: caseSensitive,
-                    includeHidden: includeHidden,
-                    target: target,
-                    matchMode: matchMode,
-                    searchKind: searchKind
-                )
-                try runPathCommand(
-                    command,
-                    folder: folder,
-                    includeHidden: includeHidden,
-                    continuation: continuation
-                ) { url in
-                    yieldNameResult(url)
-                }
 
-                if !caseSensitive && !trimmedQuery.isEmpty {
-                    let fallbackCommand = try builder.makeNameEnumerationCommand(
+                let shouldFilterEnumeratedNames = matchMode == .regex ||
+                    (trimmedQuery.isEmpty &&
+                        normalizedExtensions.isEmpty &&
+                        filters.isActive)
+
+                if shouldFilterEnumeratedNames {
+                    let regularExpression = try UnicodeTextMatcher.regularExpression(
+                        for: trimmedQuery,
+                        caseSensitive: caseSensitive
+                    )
+                    let command = try builder.makeNameEnumerationCommand(
                         folder: folder,
                         extensions: extensions,
                         caseSensitive: caseSensitive,
                         includeHidden: includeHidden,
                         target: target
                     )
-                    let candidateURLs = try collectPaths(
-                        with: fallbackCommand,
+                    try runPathCommand(
+                        command,
                         folder: folder,
                         includeHidden: includeHidden,
                         continuation: continuation
-                    )
-
-                    for candidateURL in candidateURLs {
-                        if isCancellationRequested() {
-                            throw FindSearchServiceError.cancelled
-                        }
+                    ) { url in
                         if UnicodeTextMatcher.fileName(
-                            candidateURL.lastPathComponent,
+                            url.lastPathComponent,
                             matches: trimmedQuery,
-                            matchMode: matchMode
+                            matchMode: matchMode,
+                            caseSensitive: caseSensitive,
+                            regularExpression: regularExpression
                         ) {
-                            yieldNameResult(candidateURL)
+                            yieldNameResult(url)
+                        }
+                    }
+                } else {
+                    let command = try builder.makeCommand(
+                        folder: folder,
+                        query: query,
+                        extensions: extensions,
+                        caseSensitive: caseSensitive,
+                        includeHidden: includeHidden,
+                        target: target,
+                        matchMode: matchMode,
+                        searchKind: searchKind
+                    )
+                    try runPathCommand(
+                        command,
+                        folder: folder,
+                        includeHidden: includeHidden,
+                        continuation: continuation
+                    ) { url in
+                        yieldNameResult(url)
+                    }
+
+                    if !caseSensitive && !trimmedQuery.isEmpty {
+                        let fallbackCommand = try builder.makeNameEnumerationCommand(
+                            folder: folder,
+                            extensions: extensions,
+                            caseSensitive: caseSensitive,
+                            includeHidden: includeHidden,
+                            target: target
+                        )
+                        let candidateURLs = try collectPaths(
+                            with: fallbackCommand,
+                            folder: folder,
+                            includeHidden: includeHidden,
+                            continuation: continuation
+                        )
+
+                        for candidateURL in candidateURLs {
+                            if isCancellationRequested() {
+                                throw FindSearchServiceError.cancelled
+                            }
+                            if UnicodeTextMatcher.fileName(
+                                candidateURL.lastPathComponent,
+                                matches: trimmedQuery,
+                                matchMode: matchMode,
+                                caseSensitive: caseSensitive
+                            ) {
+                                yieldNameResult(candidateURL)
+                            }
                         }
                     }
                 }
             case .contents:
                 let deduper = SearchResultDeduper()
                 let yieldContentResult: (URL) -> Void = { url in
-                    if deduper.shouldYield(url) {
+                    if filters.matches(url) && deduper.shouldYield(url) {
                         continuation.yield(.result(SearchResult(url: url)))
                     }
                 }
@@ -231,7 +313,8 @@ final class FindSearchService: FindSearching {
                         if isCancellationRequested() {
                             throw FindSearchServiceError.cancelled
                         }
-                        if plainTextDocument(at: candidateURL, contains: trimmedQuery, caseSensitive: caseSensitive) {
+                        if filters.matches(candidateURL) &&
+                            plainTextDocument(at: candidateURL, contains: trimmedQuery, caseSensitive: caseSensitive) {
                             yieldContentResult(candidateURL)
                         }
                     }
@@ -254,7 +337,8 @@ final class FindSearchService: FindSearching {
                         if isCancellationRequested() {
                             throw FindSearchServiceError.cancelled
                         }
-                        if pdfDocument(at: pdfURL, contains: trimmedQuery, caseSensitive: caseSensitive) {
+                        if filters.matches(pdfURL) &&
+                            pdfDocument(at: pdfURL, contains: trimmedQuery, caseSensitive: caseSensitive) {
                             yieldContentResult(pdfURL)
                         }
                     }
@@ -277,7 +361,8 @@ final class FindSearchService: FindSearching {
                         if isCancellationRequested() {
                             throw FindSearchServiceError.cancelled
                         }
-                        if docxDocument(at: docxURL, contains: trimmedQuery, caseSensitive: caseSensitive) {
+                        if filters.matches(docxURL) &&
+                            docxDocument(at: docxURL, contains: trimmedQuery, caseSensitive: caseSensitive) {
                             yieldContentResult(docxURL)
                         }
                     }
@@ -663,21 +748,52 @@ private enum UnicodeTextMatcher {
     static func fileName(
         _ fileName: String,
         matches query: String,
-        matchMode: SearchMatchMode
+        matchMode: SearchMatchMode,
+        caseSensitive: Bool,
+        regularExpression: NSRegularExpression? = nil
     ) -> Bool {
+        guard !query.isEmpty else {
+            return true
+        }
+
         switch matchMode {
         case .contains:
-            return contains(query, in: fileName, caseSensitive: false)
+            return contains(query, in: fileName, caseSensitive: caseSensitive)
+        case .regex:
+            guard let regularExpression else {
+                return false
+            }
+            let range = NSRange(fileName.startIndex..<fileName.endIndex, in: fileName)
+            return regularExpression.firstMatch(in: fileName, options: [], range: range) != nil
         case .fuzzy:
-            return fuzzyContains(query, in: fileName)
+            return fuzzyContains(query, in: fileName, caseSensitive: caseSensitive)
+        }
+    }
+
+    static func regularExpression(
+        for query: String,
+        caseSensitive: Bool
+    ) throws -> NSRegularExpression? {
+        guard !query.isEmpty else {
+            return nil
+        }
+
+        let options: NSRegularExpression.Options = caseSensitive ? [] : [.caseInsensitive]
+        do {
+            return try NSRegularExpression(pattern: query, options: options)
+        } catch {
+            throw FindSearchServiceError.invalidRegularExpression(error.localizedDescription)
         }
     }
 
     private static func fuzzyContains(
         _ query: String,
-        in text: String
+        in text: String,
+        caseSensitive: Bool
     ) -> Bool {
-        var remainingCharacters = folded(query)
+        let preparedQuery = caseSensitive ? query : folded(query)
+        let preparedText = caseSensitive ? text : folded(text)
+        var remainingCharacters = preparedQuery
             .filter { !$0.isWhitespaceOrNewline }
             .makeIterator()
 
@@ -685,7 +801,7 @@ private enum UnicodeTextMatcher {
             return true
         }
 
-        for textCharacter in folded(text) {
+        for textCharacter in preparedText {
             if textCharacter == queryCharacter {
                 guard let nextQueryCharacter = remainingCharacters.next() else {
                     return true

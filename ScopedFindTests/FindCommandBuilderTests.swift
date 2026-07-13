@@ -179,6 +179,23 @@ final class FindCommandBuilderTests: XCTestCase {
         )
     }
 
+    func testRegexNameCommandEnumeratesCandidatesForInProcessMatching() throws {
+        let command = try FindCommandBuilder().makeCommand(
+            folder: temporaryFolder,
+            query: "report-[0-9]+",
+            extensions: "txt",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .files,
+            matchMode: .regex
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "-type", "f", "(", "-iname", "*.txt", ")", "-print0"]
+        )
+    }
+
     func testExtensionPunctuationIsEscaped() throws {
         let command = try FindCommandBuilder().makeCommand(
             folder: temporaryFolder,
