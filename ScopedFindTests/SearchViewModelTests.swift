@@ -128,6 +128,65 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.status, .cancelled)
     }
 
+    func testFirstResultAppearsImmediatelyAndLaterResultsFlushOnTimer() async throws {
+        let service = StreamingFindSearchService()
+        let viewModel = SearchViewModel(
+            searchService: service,
+            resultBatchSize: 25,
+            resultFlushDelayNanoseconds: 5_000_000
+        )
+        viewModel.selectFolder(URL(fileURLWithPath: "/tmp"))
+        viewModel.query = "notes"
+        viewModel.startSearch()
+        try await waitForStream(service)
+
+        service.send(.result(SearchResult(url: URL(fileURLWithPath: "/tmp/first.txt"))))
+        try await Task.sleep(nanoseconds: 5_000_000)
+        XCTAssertEqual(viewModel.results.map(\.url.path), ["/tmp/first.txt"])
+
+        service.send(.result(SearchResult(url: URL(fileURLWithPath: "/tmp/second.txt"))))
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(viewModel.results.map(\.url.path), ["/tmp/first.txt", "/tmp/second.txt"])
+
+        viewModel.cancelSearch()
+    }
+
+    func testFinishingSearchFlushesPendingResults() async throws {
+        let service = StreamingFindSearchService()
+        let viewModel = SearchViewModel(
+            searchService: service,
+            resultBatchSize: 25,
+            resultFlushDelayNanoseconds: 1_000_000_000
+        )
+        viewModel.selectFolder(URL(fileURLWithPath: "/tmp"))
+        viewModel.query = "notes"
+        viewModel.startSearch()
+        try await waitForStream(service)
+
+        service.send(.result(SearchResult(url: URL(fileURLWithPath: "/tmp/first.txt"))))
+        service.send(.result(SearchResult(url: URL(fileURLWithPath: "/tmp/second.txt"))))
+        service.finish()
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        XCTAssertEqual(viewModel.results.map(\.url.path), ["/tmp/first.txt", "/tmp/second.txt"])
+        XCTAssertEqual(viewModel.status, .finished(resultCount: 2, warning: nil))
+    }
+
+    func testSearchActivityMessageIncludesLiveCountAndElapsedTime() throws {
+        let viewModel = SearchViewModel(searchService: MockFindSearchService())
+        viewModel.selectFolder(URL(fileURLWithPath: "/tmp"))
+        viewModel.query = "notes"
+        viewModel.startSearch()
+
+        let start = try XCTUnwrap(viewModel.searchStartedAt)
+        XCTAssertEqual(
+            viewModel.searchActivityMessage(at: start.addingTimeInterval(65)),
+            "Searching... 0 found, 1m 5s elapsed."
+        )
+
+        viewModel.cancelSearch()
+    }
+
     func testScheduledAutoSearchStartsAfterDelay() async throws {
         let service = MockFindSearchService()
         let viewModel = SearchViewModel(searchService: service, autoSearchDelayNanoseconds: 1_000_000)
@@ -155,6 +214,57 @@ final class SearchViewModelTests: XCTestCase {
 
         XCTAssertEqual(service.searchCallCount, 0)
         XCTAssertEqual(viewModel.status, .idle)
+    }
+
+    private func waitForStream(_ service: StreamingFindSearchService) async throws {
+        for _ in 0..<50 {
+            if service.isReady {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("Timed out waiting for the search stream to start.")
+    }
+}
+
+private final class StreamingFindSearchService: FindSearching {
+    private var continuation: AsyncThrowingStream<FindSearchEvent, Error>.Continuation?
+
+    var isReady: Bool {
+        continuation != nil
+    }
+
+    func search(
+        folder: URL,
+        query: String,
+        extensions: String,
+        caseSensitive: Bool,
+        includeHidden: Bool,
+        target: SearchTarget,
+        matchMode: SearchMatchMode,
+        dateFilter: SearchDateFilter,
+        customDate: Date?,
+        customEndDate: Date?,
+        sizeFilter: SearchSizeFilter,
+        customSizeBytes: UInt64?,
+        customMaximumSizeBytes: UInt64?,
+        searchKind: SearchKind
+    ) -> AsyncThrowingStream<FindSearchEvent, Error> {
+        AsyncThrowingStream { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func send(_ event: FindSearchEvent) {
+        continuation?.yield(event)
+    }
+
+    func finish() {
+        continuation?.finish()
+    }
+
+    func cancel() {
+        continuation?.finish(throwing: FindSearchServiceError.cancelled)
     }
 }
 

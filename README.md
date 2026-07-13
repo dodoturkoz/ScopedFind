@@ -32,7 +32,7 @@ Only run the quarantine-removal command for an app copy you trust. It bypasses m
 - Contents search for regular text files, text-based PDFs, and `.docx` files
 - Extension, preset/custom modified-time, preset/custom size, result-type, case-sensitivity, and hidden-file filters
 - Unicode-aware fallback matching plus contains, regex, and fuzzy filename matching
-- Streaming, cancellable results with Open, Reveal in Finder, and Copy Path actions
+- Live, cancellable results with elapsed search activity plus Open, Reveal in Finder, and Copy Path actions
 
 ## Search Behavior
 

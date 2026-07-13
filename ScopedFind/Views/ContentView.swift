@@ -282,19 +282,30 @@ struct ContentView: View {
         HStack {
             if viewModel.isSearching {
                 ProgressView()
-                    .controlSize(.small)
-            }
+                    .progressViewStyle(.linear)
+                    .frame(width: 130)
+                    .accessibilityLabel("Search in progress")
 
-            Text(viewModel.status.message)
-                .font(.callout)
-                .foregroundStyle(statusColor)
-                .lineLimit(2)
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(viewModel.searchActivityMessage(at: context.date))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            } else {
+                Text(viewModel.status.message)
+                    .font(.callout)
+                    .foregroundStyle(statusColor)
+                    .lineLimit(2)
+            }
 
             Spacer()
 
-            Text("\(viewModel.results.count) result\(viewModel.results.count == 1 ? "" : "s")")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            if !viewModel.isSearching {
+                Text("\(viewModel.results.count) result\(viewModel.results.count == 1 ? "" : "s")")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

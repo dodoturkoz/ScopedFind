@@ -68,11 +68,16 @@ final class SearchViewModel: ObservableObject {
     @Published var customMaximumSizeUnit: SearchSizeUnit = .megabytes
     @Published private(set) var results: [SearchResult] = []
     @Published private(set) var status: SearchStatus = .idle
+    @Published private(set) var searchStartedAt: Date?
 
     private let searchService: FindSearching
     private let autoSearchDelayNanoseconds: UInt64
+    private let resultBatchSize: Int
+    private let resultFlushDelayNanoseconds: UInt64
     private var searchTask: Task<Void, Never>?
     private var autoSearchTask: Task<Void, Never>?
+    private var resultFlushTask: Task<Void, Never>?
+    private var pendingResults: [SearchResult] = []
     private var latestWarning: String?
 
     var canSearch: Bool {
@@ -132,10 +137,19 @@ final class SearchViewModel: ObservableObject {
 
     init(
         searchService: FindSearching = FindSearchService(),
-        autoSearchDelayNanoseconds: UInt64 = 1_200_000_000
+        autoSearchDelayNanoseconds: UInt64 = 1_200_000_000,
+        resultBatchSize: Int = 25,
+        resultFlushDelayNanoseconds: UInt64 = 150_000_000
     ) {
         self.searchService = searchService
         self.autoSearchDelayNanoseconds = autoSearchDelayNanoseconds
+        self.resultBatchSize = max(1, resultBatchSize)
+        self.resultFlushDelayNanoseconds = resultFlushDelayNanoseconds
+    }
+
+    func searchActivityMessage(at date: Date = Date()) -> String {
+        let elapsedSeconds = max(0, Int(date.timeIntervalSince(searchStartedAt ?? date)))
+        return "Searching... \(results.count) found, \(Self.elapsedTimeDescription(elapsedSeconds)) elapsed."
     }
 
     func selectFolder(_ folder: URL) {
@@ -198,8 +212,10 @@ final class SearchViewModel: ObservableObject {
             return
         }
 
+        discardPendingResults()
         results.removeAll()
         latestWarning = nil
+        searchStartedAt = Date()
         status = .searching
 
         let folder = selectedFolder
@@ -219,8 +235,6 @@ final class SearchViewModel: ObservableObject {
 
         searchTask = Task {
             do {
-                var pendingResults: [SearchResult] = []
-
                 for try await event in searchService.search(
                     folder: folder,
                     query: query,
@@ -239,27 +253,30 @@ final class SearchViewModel: ObservableObject {
                 ) {
                     switch event {
                     case let .result(result):
-                        pendingResults.append(result)
-                        if pendingResults.count >= 100 {
-                            results.append(contentsOf: pendingResults)
-                            pendingResults.removeAll(keepingCapacity: true)
-                        }
+                        receiveSearchResult(result)
                     case let .warning(message):
                         latestWarning = message
                     }
                 }
 
-                if !pendingResults.isEmpty {
-                    results.append(contentsOf: pendingResults)
-                }
+                flushPendingResults()
+                searchStartedAt = nil
                 status = .finished(resultCount: results.count, warning: latestWarning)
             } catch is CancellationError {
+                flushPendingResults()
+                searchStartedAt = nil
                 status = .cancelled
             } catch let error as FindSearchServiceError where error == .cancelled {
+                flushPendingResults()
+                searchStartedAt = nil
                 status = .cancelled
             } catch let error as LocalizedError {
+                flushPendingResults()
+                searchStartedAt = nil
                 status = .failed(error.errorDescription ?? "The search failed.")
             } catch {
+                flushPendingResults()
+                searchStartedAt = nil
                 status = .failed("The search failed.")
             }
 
@@ -283,7 +300,62 @@ final class SearchViewModel: ObservableObject {
 
         searchTask?.cancel()
         searchService.cancel()
+        flushPendingResults()
+        searchStartedAt = nil
         status = .cancelled
+    }
+
+    private func receiveSearchResult(_ result: SearchResult) {
+        if results.isEmpty && pendingResults.isEmpty {
+            results.append(result)
+            return
+        }
+
+        pendingResults.append(result)
+        if pendingResults.count >= resultBatchSize {
+            flushPendingResults()
+        } else {
+            scheduleResultFlush()
+        }
+    }
+
+    private func scheduleResultFlush() {
+        guard resultFlushTask == nil else {
+            return
+        }
+
+        let delay = resultFlushDelayNanoseconds
+        resultFlushTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+
+            guard let self else {
+                return
+            }
+            resultFlushTask = nil
+            flushPendingResults()
+        }
+    }
+
+    private func flushPendingResults() {
+        resultFlushTask?.cancel()
+        resultFlushTask = nil
+
+        guard !pendingResults.isEmpty else {
+            return
+        }
+
+        results.append(contentsOf: pendingResults)
+        pendingResults.removeAll(keepingCapacity: true)
+    }
+
+    private func discardPendingResults() {
+        resultFlushTask?.cancel()
+        resultFlushTask = nil
+        pendingResults.removeAll(keepingCapacity: true)
     }
 
     private func startAutomaticSearch() {
@@ -317,5 +389,19 @@ final class SearchViewModel: ObservableObject {
         case .contents:
             return "Enter text to search file contents."
         }
+    }
+
+    private static func elapsedTimeDescription(_ totalSeconds: Int) -> String {
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return "\(hours)h \(minutes)m \(seconds)s"
+        }
+        if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        }
+        return "\(seconds)s"
     }
 }
