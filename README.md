@@ -1,6 +1,6 @@
 # ScopedFind
 
-ScopedFind is a small native macOS app that wraps macOS's built-in `/usr/bin/find` and `/usr/bin/grep` commands, plus Apple's PDFKit for PDF text, in a SwiftUI interface.
+ScopedFind is a small dependency-free native macOS app that wraps macOS's built-in `/usr/bin/find` and `/usr/bin/grep` commands, plus Apple's PDFKit for PDF text and an in-process DOCX text reader, in a SwiftUI interface.
 
 The app searches only inside a folder you explicitly choose. It can search file and folder names, or search file contents with an explicit Contents mode. It is an MVP for scoped local searches, not a Finder replacement.
 
@@ -30,12 +30,13 @@ Building from source is still available for users who prefer to inspect and comp
 ## Features
 
 - Native Swift and SwiftUI macOS app
+- Dependency-free: no bundled search binaries, package-manager dependencies, OCR engine, updater, telemetry, or cloud service
 - Native folder picker
 - Names or Contents search modes
 - Case-sensitive or case-insensitive search
-- Optional extension filtering, such as `swift`, `.pdf`, or `jpg,png`
+- Optional extension filtering, such as `swift`, `.pdf`, `.docx`, or `jpg,png`
 - Optional fuzzy filename matching
-- Content search through the built-in `/usr/bin/grep`, with PDF text search through Apple's PDFKit
+- Content search through the built-in `/usr/bin/grep`, with PDF text search through Apple's PDFKit and DOCX text search through an in-process ZIP/XML reader
 - Recursive search inside the selected folder
 - Names-mode result type filtering for files only, folders/apps only, or both
 - Optional hidden-file search
@@ -55,7 +56,7 @@ ScopedFind is intentionally local and transparent.
 - It searches only inside the folder you choose.
 - Names mode does not read file contents.
 - Contents mode reads file contents inside the chosen folder to find matching files.
-- It executes only `/usr/bin/find` and `/usr/bin/grep`; PDF text extraction happens in-process with Apple's PDFKit.
+- It executes only `/usr/bin/find` and `/usr/bin/grep`; Unicode fallback matching plus PDF and DOCX text extraction happens in-process.
 - It does not invoke `/bin/sh`, `/bin/zsh`, or any other shell.
 - It does not log filenames or search queries.
 
@@ -78,7 +79,7 @@ Searches are recursive by default. When you choose a folder, ScopedFind searches
 ScopedFind has two search modes:
 
 - Names searches file and folder names with `/usr/bin/find`.
-- Contents searches inside regular files with `/usr/bin/grep`, searches text-based PDFs with Apple's PDFKit, and returns matching files.
+- Contents searches inside regular files with `/usr/bin/grep`, searches text-based PDFs with Apple's PDFKit, searches `.docx` Word document text in-process, and returns matching files.
 
 When Auto search is enabled, ScopedFind starts a new search about 1.2 seconds after you stop typing or change a search option.
 
@@ -94,7 +95,9 @@ If Fuzzy name matching is enabled, ScopedFind matches names where the typed char
 
 Fuzzy name matching is filename/folder-name search only. It is not typo correction, ranked `fzf` search, or content search.
 
-In Contents mode, the query field is treated as literal text, not a regular expression. ScopedFind uses `grep -F` so punctuation in your query is not interpreted as pattern syntax. Contents mode searches regular files with `grep`, searches text-based PDFs with PDFKit, and returns each matching file once. Scanned or image-only PDFs are not OCRed. The Extensions field narrows which files are searched; unlike Names mode, content search requires a text query.
+In Contents mode, the query field is treated as literal text, not a regular expression. ScopedFind uses `grep -F` so punctuation in your query is not interpreted as pattern syntax. Contents mode searches regular files with `grep`, searches text-based PDFs with PDFKit, searches `.docx` Word document text in-process, and returns each matching file once. Scanned or image-only PDFs are not OCRed, and legacy `.doc` files are not supported. The Extensions field narrows which files are searched; unlike Names mode, content search requires a text query.
+
+When Case sensitive is off, ScopedFind adds Unicode-aware, diacritic-insensitive fallback matching for names and supported file contents. For example, `sevket` can match `şevket`. Case-sensitive searches stay literal.
 
 ## Why Not Finder Search?
 
@@ -103,9 +106,9 @@ Finder and Spotlight are excellent for broad macOS search, but they often combin
 | Need | Finder search | ScopedFind |
 | --- | --- | --- |
 | Find by filename only | Can mix filename and content matches | Names mode searches names only |
-| Search file text without Spotlight | Depends on indexing and metadata behavior | Contents mode uses `/usr/bin/grep` and PDFKit directly |
+| Search file text without Spotlight | Depends on indexing and metadata behavior | Contents mode uses `/usr/bin/grep`, PDFKit, and the DOCX reader directly |
 | Search exactly one chosen folder tree | Can be broad depending on scope and Spotlight behavior | Stays inside the folder you choose |
-| Search without Spotlight indexing | Depends on macOS indexing behavior | Uses `/usr/bin/find`, `/usr/bin/grep`, and PDFKit directly |
+| Search without Spotlight indexing | Depends on macOS indexing behavior | Uses `/usr/bin/find`, `/usr/bin/grep`, PDFKit, and the DOCX reader directly |
 | Filter folders/apps vs regular files | Not the main workflow | Built-in Result type menu in Names mode |
 | Filter by extension | Possible, but not always obvious | Dedicated Extensions field |
 
@@ -133,7 +136,13 @@ PDF files are handled as a second dependency-free pass. ScopedFind enumerates ma
 /usr/bin/find "/selected/folder" -type f -iname "*.pdf" -print0
 ```
 
-If the Extensions field is empty, PDFs are included. If Extensions are set, the PDF pass runs only when a `pdf` extension is included.
+DOCX files are handled as another dependency-free pass. ScopedFind enumerates matching DOCX files with `find`, opens the `.docx` ZIP structure in-process, and searches Word document XML text:
+
+```bash
+/usr/bin/find "/selected/folder" -type f -iname "*.docx" -print0
+```
+
+If the Extensions field is empty, PDF and DOCX files are included. If Extensions are set, the PDF or DOCX pass runs only when the matching extension is included.
 
 ### Searching Applications
 

@@ -1,4 +1,5 @@
 import AppKit
+import Compression
 import CoreText
 import XCTest
 @testable import ScopedFind
@@ -145,6 +146,52 @@ final class FindSearchServiceTests: XCTestCase {
         XCTAssertEqual(results.map(\.url.path), [expected.path])
     }
 
+    func testNameSearchCanMatchTurkishDiacriticsWhenCaseInsensitive() async throws {
+        let expected = temporaryFolder.appendingPathComponent("şevketibostan.txt")
+        try Data().write(to: expected)
+
+        let results = try await collectResults(
+            query: "sevket",
+            extensions: "",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .files
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([expected.path]))
+    }
+
+    func testNameSearchKeepsTurkishDiacriticsLiteralWhenCaseSensitive() async throws {
+        let file = temporaryFolder.appendingPathComponent("şevketibostan.txt")
+        try Data().write(to: file)
+
+        let results = try await collectResults(
+            query: "sevket",
+            extensions: "",
+            caseSensitive: true,
+            includeHidden: true,
+            target: .files
+        )
+
+        XCTAssertEqual(results, [])
+    }
+
+    func testFuzzyNameSearchCanMatchTurkishDiacriticsWhenCaseInsensitive() async throws {
+        let expected = temporaryFolder.appendingPathComponent("şevketibostan.txt")
+        try Data().write(to: expected)
+
+        let results = try await collectResults(
+            query: "svkt",
+            extensions: "",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .files,
+            matchMode: .fuzzy
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([expected.path]))
+    }
+
     func testServiceCanSearchFileContents() async throws {
         let expected = temporaryFolder.appendingPathComponent("report.txt")
         let nameOnlyMatch = temporaryFolder.appendingPathComponent("needle-name.txt")
@@ -160,6 +207,38 @@ final class FindSearchServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(results.map(\.url.path), [expected.path])
+    }
+
+    func testContentSearchCanMatchTurkishDiacriticsInTextFilesWhenCaseInsensitive() async throws {
+        let expected = temporaryFolder.appendingPathComponent("report.txt")
+        try Data("şevketibostan".utf8).write(to: expected)
+
+        let results = try await collectResults(
+            query: "sevket",
+            extensions: "",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([expected.path]))
+    }
+
+    func testContentSearchKeepsTurkishDiacriticsLiteralWhenCaseSensitive() async throws {
+        let file = temporaryFolder.appendingPathComponent("report.txt")
+        try Data("şevketibostan".utf8).write(to: file)
+
+        let results = try await collectResults(
+            query: "sevket",
+            extensions: "",
+            caseSensitive: true,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(results, [])
     }
 
     func testContentSearchIsCaseInsensitiveByDefault() async throws {
@@ -349,6 +428,141 @@ final class FindSearchServiceTests: XCTestCase {
         XCTAssertEqual(Set(results.map(\.url.path)), Set([visibleFile.path]))
     }
 
+    func testPDFContentSearchCanMatchTurkishDiacriticsWhenCaseInsensitive() async throws {
+        let expected = temporaryFolder.appendingPathComponent("report.pdf")
+        try writeSearchablePDF("şevketibostan", to: expected)
+
+        let results = try await collectResults(
+            query: "sevket",
+            extensions: "",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([expected.path]))
+    }
+
+    func testContentSearchCanSearchDOCXText() async throws {
+        let expected = temporaryFolder.appendingPathComponent("report.docx")
+        let nameOnlyMatch = temporaryFolder.appendingPathComponent("needle-name.docx")
+        try writeSearchableDOCX("The project needle is here.", to: expected)
+        try writeSearchableDOCX("plain text", to: nameOnlyMatch)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([expected.path]))
+    }
+
+    func testDOCXContentSearchIsCaseInsensitiveByDefault() async throws {
+        let expected = temporaryFolder.appendingPathComponent("report.docx")
+        try writeSearchableDOCX("Needle", to: expected)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([expected.path]))
+    }
+
+    func testDOCXContentSearchCanBeCaseSensitive() async throws {
+        let upper = temporaryFolder.appendingPathComponent("upper.docx")
+        let lower = temporaryFolder.appendingPathComponent("lower.docx")
+        try writeSearchableDOCX("Needle", to: upper)
+        try writeSearchableDOCX("needle", to: lower)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            caseSensitive: true,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([lower.path]))
+    }
+
+    func testDOCXContentSearchCanBeFilteredToDOCXExtension() async throws {
+        let docxFile = temporaryFolder.appendingPathComponent("report.docx")
+        let textFile = temporaryFolder.appendingPathComponent("report.txt")
+        try writeSearchableDOCX("needle", to: docxFile)
+        try Data("needle".utf8).write(to: textFile)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "docx",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([docxFile.path]))
+    }
+
+    func testDOCXContentSearchIsSkippedForNonDOCXExtensionFilter() async throws {
+        let docxFile = temporaryFolder.appendingPathComponent("report.docx")
+        let textFile = temporaryFolder.appendingPathComponent("report.txt")
+        try writeSearchableDOCX("needle", to: docxFile)
+        try Data("needle".utf8).write(to: textFile)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "txt",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [textFile.path])
+    }
+
+    func testDOCXContentSearchExcludesHiddenPathsByDefault() async throws {
+        let visibleFile = temporaryFolder.appendingPathComponent("visible.docx")
+        let hiddenDirectory = temporaryFolder.appendingPathComponent(".hidden", isDirectory: true)
+        let hiddenFile = hiddenDirectory.appendingPathComponent("secret.docx")
+        try FileManager.default.createDirectory(at: hiddenDirectory, withIntermediateDirectories: true)
+        try writeSearchableDOCX("needle", to: visibleFile)
+        try writeSearchableDOCX("needle", to: hiddenFile)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: false,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([visibleFile.path]))
+    }
+
+    func testDOCXContentSearchCanMatchTurkishDiacriticsWhenCaseInsensitive() async throws {
+        let expected = temporaryFolder.appendingPathComponent("report.docx")
+        try writeSearchableDOCX("şevketibostan", to: expected)
+
+        let results = try await collectResults(
+            query: "sevket",
+            extensions: "",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([expected.path]))
+    }
+
     func testPermissionDeniedSurfacesWarningAndKeepsAccessibleResults() async throws {
         let visibleFile = temporaryFolder.appendingPathComponent("permission-note.txt")
         try Data().write(to: visibleFile)
@@ -448,9 +662,141 @@ final class FindSearchServiceTests: XCTestCase {
         context.endPDFPage()
         context.closePDF()
     }
+
+    private func writeSearchableDOCX(_ text: String, to url: URL) throws {
+        let escapedText = text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+        let documentXML = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:body>
+            <w:p>
+              <w:r>
+                <w:t>\(escapedText)</w:t>
+              </w:r>
+            </w:p>
+          </w:body>
+        </w:document>
+        """
+
+        try writeZIP(
+            entries: [("word/document.xml", Data(documentXML.utf8))],
+            to: url
+        )
+    }
+
+    private func writeZIP(entries: [(name: String, data: Data)], to url: URL) throws {
+        var archive = Data()
+        var centralDirectory = Data()
+
+        for entry in entries {
+            let localHeaderOffset = UInt32(archive.count)
+            let fileNameData = Data(entry.name.utf8)
+            let compressedData = try deflatedData(from: entry.data)
+
+            archive.appendUInt32LE(0x0403_4b50)
+            archive.appendUInt16LE(20)
+            archive.appendUInt16LE(0)
+            archive.appendUInt16LE(8)
+            archive.appendUInt16LE(0)
+            archive.appendUInt16LE(0)
+            archive.appendUInt32LE(0)
+            archive.appendUInt32LE(UInt32(compressedData.count))
+            archive.appendUInt32LE(UInt32(entry.data.count))
+            archive.appendUInt16LE(UInt16(fileNameData.count))
+            archive.appendUInt16LE(0)
+            archive.append(fileNameData)
+            archive.append(compressedData)
+
+            centralDirectory.appendUInt32LE(0x0201_4b50)
+            centralDirectory.appendUInt16LE(20)
+            centralDirectory.appendUInt16LE(20)
+            centralDirectory.appendUInt16LE(0)
+            centralDirectory.appendUInt16LE(8)
+            centralDirectory.appendUInt16LE(0)
+            centralDirectory.appendUInt16LE(0)
+            centralDirectory.appendUInt32LE(0)
+            centralDirectory.appendUInt32LE(UInt32(compressedData.count))
+            centralDirectory.appendUInt32LE(UInt32(entry.data.count))
+            centralDirectory.appendUInt16LE(UInt16(fileNameData.count))
+            centralDirectory.appendUInt16LE(0)
+            centralDirectory.appendUInt16LE(0)
+            centralDirectory.appendUInt16LE(0)
+            centralDirectory.appendUInt16LE(0)
+            centralDirectory.appendUInt32LE(0)
+            centralDirectory.appendUInt32LE(localHeaderOffset)
+            centralDirectory.append(fileNameData)
+        }
+
+        let centralDirectoryOffset = UInt32(archive.count)
+        archive.append(centralDirectory)
+        archive.appendUInt32LE(0x0605_4b50)
+        archive.appendUInt16LE(0)
+        archive.appendUInt16LE(0)
+        archive.appendUInt16LE(UInt16(entries.count))
+        archive.appendUInt16LE(UInt16(entries.count))
+        archive.appendUInt32LE(UInt32(centralDirectory.count))
+        archive.appendUInt32LE(centralDirectoryOffset)
+        archive.appendUInt16LE(0)
+
+        try archive.write(to: url)
+    }
+
+    private func deflatedData(from data: Data) throws -> Data {
+        guard !data.isEmpty else {
+            return Data()
+        }
+
+        var destination = Data(count: data.count + 128)
+        let destinationCapacity = destination.count
+        let encodedCount = data.withUnsafeBytes { sourceBuffer in
+            destination.withUnsafeMutableBytes { destinationBuffer in
+                guard let sourceBaseAddress = sourceBuffer.bindMemory(to: UInt8.self).baseAddress,
+                      let destinationBaseAddress = destinationBuffer.bindMemory(to: UInt8.self).baseAddress else {
+                    return 0
+                }
+
+                return compression_encode_buffer(
+                    destinationBaseAddress,
+                    destinationCapacity,
+                    sourceBaseAddress,
+                    data.count,
+                    nil,
+                    COMPRESSION_ZLIB
+                )
+            }
+        }
+
+        guard encodedCount > 0 else {
+            throw TestDOCXError.couldNotDeflateDocument
+        }
+
+        destination.removeSubrange(encodedCount..<destination.count)
+        return destination
+    }
 }
 
 private enum TestPDFError: Error {
     case couldNotCreateConsumer
     case couldNotCreateContext
+}
+
+private enum TestDOCXError: Error {
+    case couldNotDeflateDocument
+}
+
+private extension Data {
+    mutating func appendUInt16LE(_ value: UInt16) {
+        append(UInt8(value & 0x00ff))
+        append(UInt8((value >> 8) & 0x00ff))
+    }
+
+    mutating func appendUInt32LE(_ value: UInt32) {
+        append(UInt8(value & 0x0000_00ff))
+        append(UInt8((value >> 8) & 0x0000_00ff))
+        append(UInt8((value >> 16) & 0x0000_00ff))
+        append(UInt8((value >> 24) & 0x0000_00ff))
+    }
 }

@@ -322,6 +322,78 @@ final class FindCommandBuilderTests: XCTestCase {
         XCTAssertNil(command)
     }
 
+    func testDOCXEnumerationCommandFindsDOCXFilesWhenNoExtensionFilterIsSet() throws {
+        let command = try XCTUnwrap(
+            FindCommandBuilder().makeDOCXEnumerationCommand(
+                folder: temporaryFolder,
+                extensions: "",
+                caseSensitive: true,
+                includeHidden: true
+            )
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "-type", "f", "-iname", "*.docx", "-print0"]
+        )
+    }
+
+    func testDOCXEnumerationCommandHonorsDOCXExtensionFilter() throws {
+        let command = try XCTUnwrap(
+            FindCommandBuilder().makeDOCXEnumerationCommand(
+                folder: temporaryFolder,
+                extensions: "txt,DOCX",
+                caseSensitive: true,
+                includeHidden: true
+            )
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "-type", "f", "(", "-name", "*.DOCX", ")", "-print0"]
+        )
+    }
+
+    func testDOCXEnumerationCommandIsSkippedForNonDOCXExtensionFilter() throws {
+        let command = try FindCommandBuilder().makeDOCXEnumerationCommand(
+            folder: temporaryFolder,
+            extensions: "pdf md",
+            caseSensitive: false,
+            includeHidden: true
+        )
+
+        XCTAssertNil(command)
+    }
+
+    func testNameEnumerationCommandCanListExtensionFilteredCandidates() throws {
+        let command = try FindCommandBuilder().makeNameEnumerationCommand(
+            folder: temporaryFolder,
+            extensions: "txt md",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .files
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "-type", "f", "(", "-iname", "*.txt", "-o", "-iname", "*.md", ")", "-print0"]
+        )
+    }
+
+    func testContentEnumerationCommandCanListExtensionFilteredFiles() throws {
+        let command = try FindCommandBuilder().makeContentEnumerationCommand(
+            folder: temporaryFolder,
+            extensions: "txt md",
+            caseSensitive: false,
+            includeHidden: false
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "!", "-path", temporaryFolder.path, "-name", ".*", "-prune", "-o", "-type", "f", "(", "-iname", "*.txt", "-o", "-iname", "*.md", ")", "-print0"]
+        )
+    }
+
     func testEmptyQueryThrows() {
         XCTAssertThrowsError(
             try FindCommandBuilder().makeCommand(

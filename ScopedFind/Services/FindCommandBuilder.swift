@@ -92,10 +92,96 @@ struct FindCommandBuilder {
         caseSensitive: Bool,
         includeHidden: Bool
     ) throws -> FindCommand? {
+        try makeDocumentEnumerationCommand(
+            folder: folder,
+            extensions: extensions,
+            caseSensitive: caseSensitive,
+            includeHidden: includeHidden,
+            fileExtension: "pdf"
+        )
+    }
+
+    func makeDOCXEnumerationCommand(
+        folder: URL,
+        extensions: String,
+        caseSensitive: Bool,
+        includeHidden: Bool
+    ) throws -> FindCommand? {
+        try makeDocumentEnumerationCommand(
+            folder: folder,
+            extensions: extensions,
+            caseSensitive: caseSensitive,
+            includeHidden: includeHidden,
+            fileExtension: "docx"
+        )
+    }
+
+    func makeNameEnumerationCommand(
+        folder: URL,
+        extensions: String,
+        caseSensitive: Bool,
+        includeHidden: Bool,
+        target: SearchTarget
+    ) throws -> FindCommand {
         let normalizedExtensions = Self.normalizedExtensions(from: extensions)
-        guard let pdfMatchArguments = Self.pdfMatchArguments(
+        try validateFolder(folder)
+
+        let namePredicate = caseSensitive ? "-name" : "-iname"
+        let targetArguments = target.findTypeArgument.map { ["-type", $0] } ?? []
+        let matchArguments = normalizedExtensions.isEmpty ? [] : Self.extensionMatchArguments(
+            for: normalizedExtensions,
+            namePredicate: namePredicate
+        )
+
+        var arguments = [folder.path]
+        if includeHidden {
+            arguments += targetArguments + matchArguments + ["-print0"]
+        } else {
+            arguments += ["!", "-path", folder.path, "-name", ".*", "-prune", "-o"]
+            arguments += targetArguments + matchArguments + ["-print0"]
+        }
+
+        return FindCommand(executableURL: Self.executableURL, arguments: arguments)
+    }
+
+    func makeContentEnumerationCommand(
+        folder: URL,
+        extensions: String,
+        caseSensitive: Bool,
+        includeHidden: Bool
+    ) throws -> FindCommand {
+        let normalizedExtensions = Self.normalizedExtensions(from: extensions)
+        try validateFolder(folder)
+
+        let namePredicate = caseSensitive ? "-name" : "-iname"
+        let matchArguments = normalizedExtensions.isEmpty ? [] : Self.extensionMatchArguments(
+            for: normalizedExtensions,
+            namePredicate: namePredicate
+        )
+
+        var arguments = [folder.path]
+        if includeHidden {
+            arguments += ["-type", "f"] + matchArguments + ["-print0"]
+        } else {
+            arguments += ["!", "-path", folder.path, "-name", ".*", "-prune", "-o"]
+            arguments += ["-type", "f"] + matchArguments + ["-print0"]
+        }
+
+        return FindCommand(executableURL: Self.executableURL, arguments: arguments)
+    }
+
+    private func makeDocumentEnumerationCommand(
+        folder: URL,
+        extensions: String,
+        caseSensitive: Bool,
+        includeHidden: Bool,
+        fileExtension: String
+    ) throws -> FindCommand? {
+        let normalizedExtensions = Self.normalizedExtensions(from: extensions)
+        guard let documentMatchArguments = Self.documentMatchArguments(
             extensions: normalizedExtensions,
-            caseSensitive: caseSensitive
+            caseSensitive: caseSensitive,
+            fileExtension: fileExtension
         ) else {
             return nil
         }
@@ -104,10 +190,10 @@ struct FindCommandBuilder {
 
         var arguments = [folder.path]
         if includeHidden {
-            arguments += ["-type", "f"] + pdfMatchArguments + ["-print0"]
+            arguments += ["-type", "f"] + documentMatchArguments + ["-print0"]
         } else {
             arguments += ["!", "-path", folder.path, "-name", ".*", "-prune", "-o"]
-            arguments += ["-type", "f"] + pdfMatchArguments + ["-print0"]
+            arguments += ["-type", "f"] + documentMatchArguments + ["-print0"]
         }
 
         return FindCommand(executableURL: Self.executableURL, arguments: arguments)
@@ -270,23 +356,24 @@ struct FindCommandBuilder {
         return arguments
     }
 
-    private static func pdfMatchArguments(
+    private static func documentMatchArguments(
         extensions: [String],
-        caseSensitive: Bool
+        caseSensitive: Bool,
+        fileExtension: String
     ) -> [String]? {
         if extensions.isEmpty {
-            return ["-iname", "*.pdf"]
+            return ["-iname", "*.\(fileExtension)"]
         }
 
-        let pdfExtensions = extensions.filter { extensionValue in
-            extensionValue.caseInsensitiveCompare("pdf") == .orderedSame
+        let matchingExtensions = extensions.filter { extensionValue in
+            extensionValue.caseInsensitiveCompare(fileExtension) == .orderedSame
         }
-        guard !pdfExtensions.isEmpty else {
+        guard !matchingExtensions.isEmpty else {
             return nil
         }
 
         return extensionMatchArguments(
-            for: pdfExtensions,
+            for: matchingExtensions,
             namePredicate: caseSensitive ? "-name" : "-iname"
         )
     }
