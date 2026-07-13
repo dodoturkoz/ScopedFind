@@ -1,3 +1,5 @@
+import AppKit
+import CoreText
 import XCTest
 @testable import ScopedFind
 
@@ -244,6 +246,109 @@ final class FindSearchServiceTests: XCTestCase {
         XCTAssertEqual(results, [])
     }
 
+    func testContentSearchCanSearchPDFText() async throws {
+        let expected = temporaryFolder.appendingPathComponent("report.pdf")
+        let nameOnlyMatch = temporaryFolder.appendingPathComponent("needle-name.pdf")
+        try writeSearchablePDF("The project needle is here.", to: expected)
+        try writeSearchablePDF("plain text", to: nameOnlyMatch)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([expected.path]))
+    }
+
+    func testPDFContentSearchIsCaseInsensitiveByDefault() async throws {
+        let expected = temporaryFolder.appendingPathComponent("report.pdf")
+        try writeSearchablePDF("Needle", to: expected)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([expected.path]))
+    }
+
+    func testPDFContentSearchCanBeCaseSensitive() async throws {
+        let upper = temporaryFolder.appendingPathComponent("upper.pdf")
+        let lower = temporaryFolder.appendingPathComponent("lower.pdf")
+        try writeSearchablePDF("Needle", to: upper)
+        try writeSearchablePDF("needle", to: lower)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            caseSensitive: true,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([lower.path]))
+    }
+
+    func testPDFContentSearchCanBeFilteredToPDFExtension() async throws {
+        let pdfFile = temporaryFolder.appendingPathComponent("report.pdf")
+        let textFile = temporaryFolder.appendingPathComponent("report.txt")
+        try writeSearchablePDF("needle", to: pdfFile)
+        try Data("needle".utf8).write(to: textFile)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "pdf",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([pdfFile.path]))
+    }
+
+    func testPDFContentSearchIsSkippedForNonPDFExtensionFilter() async throws {
+        let pdfFile = temporaryFolder.appendingPathComponent("report.pdf")
+        let textFile = temporaryFolder.appendingPathComponent("report.txt")
+        try writeSearchablePDF("needle", to: pdfFile)
+        try Data("needle".utf8).write(to: textFile)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "txt",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(results.map(\.url.path), [textFile.path])
+    }
+
+    func testPDFContentSearchExcludesHiddenPathsByDefault() async throws {
+        let visibleFile = temporaryFolder.appendingPathComponent("visible.pdf")
+        let hiddenDirectory = temporaryFolder.appendingPathComponent(".hidden", isDirectory: true)
+        let hiddenFile = hiddenDirectory.appendingPathComponent("secret.pdf")
+        try FileManager.default.createDirectory(at: hiddenDirectory, withIntermediateDirectories: true)
+        try writeSearchablePDF("needle", to: visibleFile)
+        try writeSearchablePDF("needle", to: hiddenFile)
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "",
+            includeHidden: false,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([visibleFile.path]))
+    }
+
     func testPermissionDeniedSurfacesWarningAndKeepsAccessibleResults() async throws {
         let visibleFile = temporaryFolder.appendingPathComponent("permission-note.txt")
         try Data().write(to: visibleFile)
@@ -310,4 +415,42 @@ final class FindSearchServiceTests: XCTestCase {
 
         return results
     }
+
+    private func writeSearchablePDF(_ text: String, to url: URL) throws {
+        guard let consumer = CGDataConsumer(url: url as CFURL) else {
+            throw TestPDFError.couldNotCreateConsumer
+        }
+
+        var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
+        guard let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else {
+            throw TestPDFError.couldNotCreateContext
+        }
+
+        context.beginPDFPage(nil)
+        context.translateBy(x: 0, y: mediaBox.height)
+        context.scaleBy(x: 1, y: -1)
+
+        let attributedString = NSAttributedString(
+            string: text,
+            attributes: [.font: NSFont.systemFont(ofSize: 18)]
+        )
+        let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
+        let textPath = CGMutablePath()
+        textPath.addRect(CGRect(x: 72, y: 72, width: 468, height: 648))
+        let frame = CTFramesetterCreateFrame(
+            framesetter,
+            CFRange(location: 0, length: attributedString.length),
+            textPath,
+            nil
+        )
+        CTFrameDraw(frame, context)
+
+        context.endPDFPage()
+        context.closePDF()
+    }
+}
+
+private enum TestPDFError: Error {
+    case couldNotCreateConsumer
+    case couldNotCreateContext
 }

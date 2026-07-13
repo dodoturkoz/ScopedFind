@@ -263,6 +263,65 @@ final class FindCommandBuilderTests: XCTestCase {
         )
     }
 
+    func testPDFEnumerationCommandFindsPDFsWhenNoExtensionFilterIsSet() throws {
+        let command = try XCTUnwrap(
+            FindCommandBuilder().makePDFEnumerationCommand(
+                folder: temporaryFolder,
+                extensions: "",
+                caseSensitive: true,
+                includeHidden: true
+            )
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "-type", "f", "-iname", "*.pdf", "-print0"]
+        )
+    }
+
+    func testPDFEnumerationCommandPrunesHiddenPathsByDefault() throws {
+        let command = try XCTUnwrap(
+            FindCommandBuilder().makePDFEnumerationCommand(
+                folder: temporaryFolder,
+                extensions: "",
+                caseSensitive: false,
+                includeHidden: false
+            )
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "!", "-path", temporaryFolder.path, "-name", ".*", "-prune", "-o", "-type", "f", "-iname", "*.pdf", "-print0"]
+        )
+    }
+
+    func testPDFEnumerationCommandHonorsPDFExtensionFilter() throws {
+        let command = try XCTUnwrap(
+            FindCommandBuilder().makePDFEnumerationCommand(
+                folder: temporaryFolder,
+                extensions: "txt,PDF",
+                caseSensitive: true,
+                includeHidden: true
+            )
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "-type", "f", "(", "-name", "*.PDF", ")", "-print0"]
+        )
+    }
+
+    func testPDFEnumerationCommandIsSkippedForNonPDFExtensionFilter() throws {
+        let command = try FindCommandBuilder().makePDFEnumerationCommand(
+            folder: temporaryFolder,
+            extensions: "swift md",
+            caseSensitive: false,
+            includeHidden: true
+        )
+
+        XCTAssertNil(command)
+    }
+
     func testEmptyQueryThrows() {
         XCTAssertThrowsError(
             try FindCommandBuilder().makeCommand(

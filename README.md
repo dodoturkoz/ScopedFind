@@ -1,6 +1,6 @@
 # ScopedFind
 
-ScopedFind is a small native macOS app that wraps macOS's built-in `/usr/bin/find` and `/usr/bin/grep` commands in a SwiftUI interface.
+ScopedFind is a small native macOS app that wraps macOS's built-in `/usr/bin/find` and `/usr/bin/grep` commands, plus Apple's PDFKit for PDF text, in a SwiftUI interface.
 
 The app searches only inside a folder you explicitly choose. It can search file and folder names, or search file contents with an explicit Contents mode. It is an MVP for scoped local searches, not a Finder replacement.
 
@@ -35,7 +35,7 @@ Building from source is still available for users who prefer to inspect and comp
 - Case-sensitive or case-insensitive search
 - Optional extension filtering, such as `swift`, `.pdf`, or `jpg,png`
 - Optional fuzzy filename matching
-- Content search through the built-in `/usr/bin/grep`, with no extra dependencies
+- Content search through the built-in `/usr/bin/grep`, with PDF text search through Apple's PDFKit
 - Recursive search inside the selected folder
 - Names-mode result type filtering for files only, folders/apps only, or both
 - Optional hidden-file search
@@ -55,7 +55,7 @@ ScopedFind is intentionally local and transparent.
 - It searches only inside the folder you choose.
 - Names mode does not read file contents.
 - Contents mode reads file contents inside the chosen folder to find matching files.
-- It executes only `/usr/bin/find` and `/usr/bin/grep`.
+- It executes only `/usr/bin/find` and `/usr/bin/grep`; PDF text extraction happens in-process with Apple's PDFKit.
 - It does not invoke `/bin/sh`, `/bin/zsh`, or any other shell.
 - It does not log filenames or search queries.
 
@@ -78,7 +78,7 @@ Searches are recursive by default. When you choose a folder, ScopedFind searches
 ScopedFind has two search modes:
 
 - Names searches file and folder names with `/usr/bin/find`.
-- Contents searches inside regular files with `/usr/bin/grep` and returns matching files.
+- Contents searches inside regular files with `/usr/bin/grep`, searches text-based PDFs with Apple's PDFKit, and returns matching files.
 
 When Auto search is enabled, ScopedFind starts a new search about 1.2 seconds after you stop typing or change a search option.
 
@@ -94,7 +94,7 @@ If Fuzzy name matching is enabled, ScopedFind matches names where the typed char
 
 Fuzzy name matching is filename/folder-name search only. It is not typo correction, ranked `fzf` search, or content search.
 
-In Contents mode, the query field is treated as literal text, not a regular expression. ScopedFind uses `grep -F` so punctuation in your query is not interpreted as pattern syntax. Contents mode searches regular files, ignores binary files, and returns each matching file once. The Extensions field narrows which files are searched; unlike Names mode, content search requires a text query.
+In Contents mode, the query field is treated as literal text, not a regular expression. ScopedFind uses `grep -F` so punctuation in your query is not interpreted as pattern syntax. Contents mode searches regular files with `grep`, searches text-based PDFs with PDFKit, and returns each matching file once. Scanned or image-only PDFs are not OCRed. The Extensions field narrows which files are searched; unlike Names mode, content search requires a text query.
 
 ## Why Not Finder Search?
 
@@ -103,9 +103,9 @@ Finder and Spotlight are excellent for broad macOS search, but they often combin
 | Need | Finder search | ScopedFind |
 | --- | --- | --- |
 | Find by filename only | Can mix filename and content matches | Names mode searches names only |
-| Search file text without Spotlight | Depends on indexing and metadata behavior | Contents mode uses `/usr/bin/grep` directly |
+| Search file text without Spotlight | Depends on indexing and metadata behavior | Contents mode uses `/usr/bin/grep` and PDFKit directly |
 | Search exactly one chosen folder tree | Can be broad depending on scope and Spotlight behavior | Stays inside the folder you choose |
-| Search without Spotlight indexing | Depends on macOS indexing behavior | Uses `/usr/bin/find` and `/usr/bin/grep` directly |
+| Search without Spotlight indexing | Depends on macOS indexing behavior | Uses `/usr/bin/find`, `/usr/bin/grep`, and PDFKit directly |
 | Filter folders/apps vs regular files | Not the main workflow | Built-in Result type menu in Names mode |
 | Filter by extension | Possible, but not always obvious | Dedicated Extensions field |
 
@@ -119,13 +119,21 @@ By default, ScopedFind also excludes hidden files and folders. When case-sensiti
 
 The Extensions field is optional. It accepts extensions with or without a leading dot, separated by commas, semicolons, spaces, or newlines. For example, `swift,md` matches `.swift` and `.md` files. You can search by extension only without entering a filename query.
 
-In Contents mode, the search is equivalent to `find` enumerating regular files and running `grep` over them:
+In Contents mode, text-file search is equivalent to `find` enumerating regular files and running `grep` over them:
 
 ```bash
 /usr/bin/find "/selected/folder" -type f -exec /usr/bin/grep -I -l --null -F -i -e "query" {} +
 ```
 
 When Extensions are set in Contents mode, the `find` step filters files by extension before running `grep`.
+
+PDF files are handled as a second dependency-free pass. ScopedFind enumerates matching PDFs with `find`, then extracts searchable text with Apple's PDFKit:
+
+```bash
+/usr/bin/find "/selected/folder" -type f -iname "*.pdf" -print0
+```
+
+If the Extensions field is empty, PDFs are included. If Extensions are set, the PDF pass runs only when a `pdf` extension is included.
 
 ### Searching Applications
 

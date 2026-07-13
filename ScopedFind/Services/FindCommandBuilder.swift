@@ -62,13 +62,7 @@ struct FindCommandBuilder {
             searchKind: searchKind
         )
 
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory) else {
-            throw FindCommandBuilderError.folderDoesNotExist
-        }
-        guard isDirectory.boolValue else {
-            throw FindCommandBuilderError.selectedPathIsNotFolder
-        }
+        try validateFolder(folder)
 
         switch searchKind {
         case .names:
@@ -89,6 +83,43 @@ struct FindCommandBuilder {
                 caseSensitive: caseSensitive,
                 includeHidden: includeHidden
             )
+        }
+    }
+
+    func makePDFEnumerationCommand(
+        folder: URL,
+        extensions: String,
+        caseSensitive: Bool,
+        includeHidden: Bool
+    ) throws -> FindCommand? {
+        let normalizedExtensions = Self.normalizedExtensions(from: extensions)
+        guard let pdfMatchArguments = Self.pdfMatchArguments(
+            extensions: normalizedExtensions,
+            caseSensitive: caseSensitive
+        ) else {
+            return nil
+        }
+
+        try validateFolder(folder)
+
+        var arguments = [folder.path]
+        if includeHidden {
+            arguments += ["-type", "f"] + pdfMatchArguments + ["-print0"]
+        } else {
+            arguments += ["!", "-path", folder.path, "-name", ".*", "-prune", "-o"]
+            arguments += ["-type", "f"] + pdfMatchArguments + ["-print0"]
+        }
+
+        return FindCommand(executableURL: Self.executableURL, arguments: arguments)
+    }
+
+    private func validateFolder(_ folder: URL) throws {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory) else {
+            throw FindCommandBuilderError.folderDoesNotExist
+        }
+        guard isDirectory.boolValue else {
+            throw FindCommandBuilderError.selectedPathIsNotFolder
         }
     }
 
@@ -237,6 +268,27 @@ struct FindCommandBuilder {
 
         arguments.append(")")
         return arguments
+    }
+
+    private static func pdfMatchArguments(
+        extensions: [String],
+        caseSensitive: Bool
+    ) -> [String]? {
+        if extensions.isEmpty {
+            return ["-iname", "*.pdf"]
+        }
+
+        let pdfExtensions = extensions.filter { extensionValue in
+            extensionValue.caseInsensitiveCompare("pdf") == .orderedSame
+        }
+        guard !pdfExtensions.isEmpty else {
+            return nil
+        }
+
+        return extensionMatchArguments(
+            for: pdfExtensions,
+            namePredicate: caseSensitive ? "-name" : "-iname"
+        )
     }
 
     static func escapedFindPatternComponent(_ value: String) -> String {
