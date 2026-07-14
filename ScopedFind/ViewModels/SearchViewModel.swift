@@ -69,6 +69,7 @@ final class SearchViewModel: ObservableObject {
     @Published private(set) var results: [SearchResult] = []
     @Published private(set) var status: SearchStatus = .idle
     @Published private(set) var searchStartedAt: Date?
+    @Published private(set) var lastSearchExplanation: SearchExplanation?
 
     private let searchService: FindSearching
     private let autoSearchDelayNanoseconds: UInt64
@@ -215,6 +216,7 @@ final class SearchViewModel: ObservableObject {
         discardPendingResults()
         results.removeAll()
         latestWarning = nil
+        lastSearchExplanation = nil
         searchStartedAt = Date()
         status = .searching
 
@@ -252,6 +254,8 @@ final class SearchViewModel: ObservableObject {
                     searchKind: searchKind
                 ) {
                     switch event {
+                    case let .explanation(explanation):
+                        lastSearchExplanation = explanation
                     case let .result(result):
                         receiveSearchResult(result)
                     case let .warning(message):

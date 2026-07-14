@@ -3,11 +3,15 @@ import AppKit
 
 struct ContentView: View {
     @StateObject private var viewModel = SearchViewModel()
+    @State private var presentedExplanation: SearchExplanation?
 
     var body: some View {
         mainLayout
             .onChange(of: viewModel.autoSearchTrigger) {
                 viewModel.scheduleAutoSearch()
+            }
+            .sheet(item: $presentedExplanation) { explanation in
+                SearchExplanationView(explanation: explanation)
             }
     }
 
@@ -15,6 +19,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             controls
+            educationGuideCard
             Divider()
             resultsList
             statusBar
@@ -276,6 +281,81 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    @ViewBuilder
+    private var educationGuideCard: some View {
+        if let explanation = viewModel.lastSearchExplanation {
+            Button {
+                presentedExplanation = explanation
+            } label: {
+                educationGuideCardLabel(isAvailable: true)
+            }
+            .buttonStyle(.plain)
+            .help("Open the Learn/Exact guide for this search.")
+        } else {
+            educationGuideCardLabel(isAvailable: false)
+        }
+    }
+
+    private func educationGuideCardLabel(isAvailable: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "terminal")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.tint)
+                .frame(width: 38, height: 38)
+                .background(.tint.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Learn what ScopedFind ran")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                Text(educationGuideSubtitle(isAvailable: isAvailable))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 16)
+
+            if isAvailable {
+                HStack(spacing: 5) {
+                    Text("Open Guide")
+                        .fontWeight(.semibold)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                }
+                .foregroundStyle(.tint)
+            } else if viewModel.isSearching {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Preparing guide…")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            } else {
+                Label("Available after a search", systemImage: "sparkles")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .background(.tint.opacity(isAvailable ? 0.10 : 0.06), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(.tint.opacity(isAvailable ? 0.35 : 0.20), lineWidth: 1)
+        }
+    }
+
+    private func educationGuideSubtitle(isAvailable: Bool) -> String {
+        if isAvailable {
+            return "Explore the Learn/Exact guide, copy commands, and understand each find, grep, and app-side step."
+        }
+        return "Every search includes a step-by-step lesson for find, grep, and app-side processing."
     }
 
     private var statusBar: some View {

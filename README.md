@@ -43,6 +43,7 @@ Only run the quarantine-removal command for an app copy you trust. It bypasses m
 - Extension, preset/custom modified-time, preset/custom size, result-type, case-sensitivity, and hidden-file filters
 - Unicode-aware fallback matching plus contains, regex, and fuzzy filename matching
 - Live, cancellable results with elapsed search activity plus Open, Reveal in Finder, and Copy Path actions
+- A prominent Learn/Exact guide that explains every command pass and app-side matching stage used by a search
 
 ## Search Behavior
 
@@ -56,6 +57,17 @@ When Case sensitive is off, ScopedFind adds Unicode-aware, diacritic-insensitive
 
 The Extensions field accepts extensions with or without a leading dot, separated by commas, semicolons, spaces, or newlines. Modified and Size filters use filesystem attributes and work in both modes. Custom modified-date filters support on, before, since, and inclusive between checks for chosen calendar dates. Custom size filters support less than, more than, exact byte size, and inclusive between checks after unit conversion. KB, MB, and GB use decimal units (for example, 1 KB is 1,000 bytes); use B for an exact byte count. In Names mode, you can search by extension, modified time, or size without a text query. In Contents mode, a text query is required.
 
+## Learn From Each Search
+
+The **Learn what ScopedFind ran** card stays visible above the results so the educational feature is discoverable before the first search. After a search starts, the whole card becomes an **Open Guide** action for that search.
+
+- **Learn** describes the search as a sequence of understandable stages: name enumeration, ordinary-text matching, Unicode fallback matching, PDFKit extraction, DOCX ZIP/XML reading, and app-side filters as applicable.
+- **Exact** shows every planned executable and argument array as a shell-formatted command, provides a short guide to flags such as `-type`, `-iname`, `-print0`, `-exec`, and the `grep` options, and lets you copy each command. Each full Argument guide row is clickable and scrolls its expanded explanation into view.
+
+The exact display is generated from the same execution plan the search service uses. It does not pretend that a hybrid search is one command: Foundation regular expressions, Unicode-aware matching, PDFKit, DOCX parsing, and modified-time/size checks are labeled as app-side stages. A search that is cancelled or fails can stop before a later planned command is launched.
+
+The copied form is safe shell notation for learning or manual use. ScopedFind itself still passes the executable path and arguments directly to `Process`; it does not execute the displayed text through a shell.
+
 ## How It Searches
 
 ScopedFind builds commands with `Process`, fixed executable paths, and argument arrays. It does not invoke `/bin/sh`, `/bin/zsh`, or any other shell.
@@ -63,7 +75,7 @@ ScopedFind builds commands with `Process`, fixed executable paths, and argument 
 Names mode is equivalent to:
 
 ```bash
-/usr/bin/find "/selected/folder" -iname "*query*"
+/usr/bin/find "/selected/folder" -iname "*query*" -print0
 ```
 
 Regex name matching, Unicode fallback matching, and modified/size filters are applied in process using Foundation APIs.

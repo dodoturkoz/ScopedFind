@@ -17,6 +17,9 @@
 		A10000000000000000000008 /* SearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000028 /* SearchViewModel.swift */; };
 		A10000000000000000000060 /* SearchTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000061 /* SearchTarget.swift */; };
 		A10000000000000000000062 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000063 /* Assets.xcassets */; };
+		A10000000000000000000066 /* SearchExplanation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000064 /* SearchExplanation.swift */; };
+		A10000000000000000000067 /* SearchExplanationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000065 /* SearchExplanationView.swift */; };
+		A10000000000000000000069 /* SearchExplanationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000068 /* SearchExplanationTests.swift */; };
 		A10000000000000000000009 /* FindCommandBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000029 /* FindCommandBuilderTests.swift */; };
 		A1000000000000000000000A /* FindOutputParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002A /* FindOutputParserTests.swift */; };
 		A1000000000000000000000B /* SearchViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002B /* SearchViewModelTests.swift */; };
@@ -50,6 +53,9 @@
 		A10000000000000000000028 /* SearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchViewModel.swift; sourceTree = "<group>"; };
 		A10000000000000000000061 /* SearchTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTarget.swift; sourceTree = "<group>"; };
 		A10000000000000000000063 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A10000000000000000000064 /* SearchExplanation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchExplanation.swift; sourceTree = "<group>"; };
+		A10000000000000000000065 /* SearchExplanationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchExplanationView.swift; sourceTree = "<group>"; };
+		A10000000000000000000068 /* SearchExplanationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchExplanationTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000029 /* FindCommandBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindCommandBuilderTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000002A /* FindOutputParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindOutputParserTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000002B /* SearchViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchViewModelTests.swift; sourceTree = "<group>"; };
@@ -113,6 +119,7 @@
 			children = (
 				A10000000000000000000022 /* ContentView.swift */,
 				A10000000000000000000023 /* SearchResultRow.swift */,
+				A10000000000000000000065 /* SearchExplanationView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -122,6 +129,7 @@
 			children = (
 				A10000000000000000000024 /* SearchResult.swift */,
 				A10000000000000000000061 /* SearchTarget.swift */,
+				A10000000000000000000064 /* SearchExplanation.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -151,6 +159,7 @@
 				A1000000000000000000002A /* FindOutputParserTests.swift */,
 				A1000000000000000000002B /* SearchViewModelTests.swift */,
 				A1000000000000000000002C /* FindSearchServiceTests.swift */,
+				A10000000000000000000068 /* SearchExplanationTests.swift */,
 			);
 			path = ScopedFindTests;
 			sourceTree = "<group>";
@@ -268,10 +277,12 @@
 				A10000000000000000000003 /* SearchResultRow.swift in Sources */,
 				A10000000000000000000004 /* SearchResult.swift in Sources */,
 				A10000000000000000000060 /* SearchTarget.swift in Sources */,
+				A10000000000000000000066 /* SearchExplanation.swift in Sources */,
 				A10000000000000000000005 /* FindCommandBuilder.swift in Sources */,
 				A10000000000000000000006 /* FindOutputParser.swift in Sources */,
 				A10000000000000000000007 /* FindSearchService.swift in Sources */,
 				A10000000000000000000008 /* SearchViewModel.swift in Sources */,
+				A10000000000000000000067 /* SearchExplanationView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -283,6 +294,7 @@
 				A1000000000000000000000A /* FindOutputParserTests.swift in Sources */,
 				A1000000000000000000000B /* SearchViewModelTests.swift in Sources */,
 				A1000000000000000000000C /* FindSearchServiceTests.swift in Sources */,
+				A10000000000000000000069 /* SearchExplanationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -431,7 +443,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.5.1;
+				MARKETING_VERSION = 0.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dogukanturkoz.ScopedFind;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -454,7 +466,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.5.1;
+				MARKETING_VERSION = 0.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dogukanturkoz.ScopedFind;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -474,7 +486,7 @@
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.5.1;
+				MARKETING_VERSION = 0.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dogukanturkoz.ScopedFindTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -495,7 +507,7 @@
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.5.1;
+				MARKETING_VERSION = 0.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dogukanturkoz.ScopedFindTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;

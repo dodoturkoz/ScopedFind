@@ -828,6 +828,8 @@ final class FindSearchServiceTests: XCTestCase {
             searchKind: .names
         ) {
             switch event {
+            case .explanation:
+                break
             case let .result(result):
                 results.append(result)
             case let .warning(warning):

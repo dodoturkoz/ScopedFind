@@ -20,6 +20,20 @@ struct FindCommand: Equatable {
     }
 }
 
+struct FindSearchExecutionPlan: Equatable {
+    enum Strategy: Equatable {
+        case namesMatchedByFind
+        case namesMatchedInProcess
+        case contents
+    }
+
+    let strategy: Strategy
+    let primaryCommand: FindCommand
+    let unicodeFallbackCommand: FindCommand?
+    let pdfEnumerationCommand: FindCommand?
+    let docxEnumerationCommand: FindCommand?
+}
+
 enum FindCommandBuilderError: LocalizedError, Equatable {
     case emptyQuery
     case emptyContentQuery
@@ -82,6 +96,110 @@ struct FindCommandBuilder {
                 extensions: normalizedExtensions,
                 caseSensitive: caseSensitive,
                 includeHidden: includeHidden
+            )
+        }
+    }
+
+    func makeExecutionPlan(
+        folder: URL,
+        query: String,
+        extensions: String,
+        caseSensitive: Bool,
+        includeHidden: Bool,
+        target: SearchTarget,
+        matchMode: SearchMatchMode,
+        filtersActive: Bool,
+        searchKind: SearchKind
+    ) throws -> FindSearchExecutionPlan {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedExtensions = Self.normalizedExtensions(from: extensions)
+
+        switch searchKind {
+        case .names:
+            let matchesNamesInProcess = matchMode == .regex ||
+                (trimmedQuery.isEmpty && normalizedExtensions.isEmpty && filtersActive)
+            let primaryCommand: FindCommand
+
+            if matchesNamesInProcess {
+                primaryCommand = try makeNameEnumerationCommand(
+                    folder: folder,
+                    extensions: extensions,
+                    caseSensitive: caseSensitive,
+                    includeHidden: includeHidden,
+                    target: target
+                )
+            } else {
+                primaryCommand = try makeCommand(
+                    folder: folder,
+                    query: query,
+                    extensions: extensions,
+                    caseSensitive: caseSensitive,
+                    includeHidden: includeHidden,
+                    target: target,
+                    matchMode: matchMode,
+                    searchKind: searchKind
+                )
+            }
+
+            let unicodeFallbackCommand: FindCommand?
+            if !matchesNamesInProcess && !caseSensitive && !trimmedQuery.isEmpty {
+                unicodeFallbackCommand = try makeNameEnumerationCommand(
+                    folder: folder,
+                    extensions: extensions,
+                    caseSensitive: caseSensitive,
+                    includeHidden: includeHidden,
+                    target: target
+                )
+            } else {
+                unicodeFallbackCommand = nil
+            }
+
+            return FindSearchExecutionPlan(
+                strategy: matchesNamesInProcess ? .namesMatchedInProcess : .namesMatchedByFind,
+                primaryCommand: primaryCommand,
+                unicodeFallbackCommand: unicodeFallbackCommand,
+                pdfEnumerationCommand: nil,
+                docxEnumerationCommand: nil
+            )
+        case .contents:
+            let primaryCommand = try makeCommand(
+                folder: folder,
+                query: query,
+                extensions: extensions,
+                caseSensitive: caseSensitive,
+                includeHidden: includeHidden,
+                target: target,
+                matchMode: matchMode,
+                searchKind: searchKind
+            )
+            let unicodeFallbackCommand: FindCommand?
+            if caseSensitive {
+                unicodeFallbackCommand = nil
+            } else {
+                unicodeFallbackCommand = try makeContentEnumerationCommand(
+                    folder: folder,
+                    extensions: extensions,
+                    caseSensitive: caseSensitive,
+                    includeHidden: includeHidden
+                )
+            }
+
+            return FindSearchExecutionPlan(
+                strategy: .contents,
+                primaryCommand: primaryCommand,
+                unicodeFallbackCommand: unicodeFallbackCommand,
+                pdfEnumerationCommand: try makePDFEnumerationCommand(
+                    folder: folder,
+                    extensions: extensions,
+                    caseSensitive: caseSensitive,
+                    includeHidden: includeHidden
+                ),
+                docxEnumerationCommand: try makeDOCXEnumerationCommand(
+                    folder: folder,
+                    extensions: extensions,
+                    caseSensitive: caseSensitive,
+                    includeHidden: includeHidden
+                )
             )
         }
     }

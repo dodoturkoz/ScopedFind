@@ -3,6 +3,7 @@ import Compression
 import PDFKit
 
 enum FindSearchEvent: Equatable {
+    case explanation(SearchExplanation)
     case result(SearchResult)
     case warning(String)
 }
@@ -174,6 +175,37 @@ final class FindSearchService: FindSearching {
                 throw FindCommandBuilderError.emptyQuery
             }
 
+            let plan = try builder.makeExecutionPlan(
+                folder: folder,
+                query: query,
+                extensions: extensions,
+                caseSensitive: caseSensitive,
+                includeHidden: includeHidden,
+                target: target,
+                matchMode: matchMode,
+                filtersActive: filters.isActive,
+                searchKind: searchKind
+            )
+            let regularExpression: NSRegularExpression?
+            if plan.strategy == .namesMatchedInProcess {
+                regularExpression = try UnicodeTextMatcher.regularExpression(
+                    for: trimmedQuery,
+                    caseSensitive: caseSensitive
+                )
+            } else {
+                regularExpression = nil
+            }
+            continuation.yield(.explanation(SearchExplanationBuilder().makeExplanation(
+                plan: plan,
+                query: query,
+                extensions: extensions,
+                caseSensitive: caseSensitive,
+                includeHidden: includeHidden,
+                target: target,
+                matchMode: matchMode,
+                filters: filters
+            )))
+
             switch searchKind {
             case .names:
                 let deduper = SearchResultDeduper()
@@ -183,25 +215,9 @@ final class FindSearchService: FindSearching {
                     }
                 }
 
-                let shouldFilterEnumeratedNames = matchMode == .regex ||
-                    (trimmedQuery.isEmpty &&
-                        normalizedExtensions.isEmpty &&
-                        filters.isActive)
-
-                if shouldFilterEnumeratedNames {
-                    let regularExpression = try UnicodeTextMatcher.regularExpression(
-                        for: trimmedQuery,
-                        caseSensitive: caseSensitive
-                    )
-                    let command = try builder.makeNameEnumerationCommand(
-                        folder: folder,
-                        extensions: extensions,
-                        caseSensitive: caseSensitive,
-                        includeHidden: includeHidden,
-                        target: target
-                    )
+                if plan.strategy == .namesMatchedInProcess {
                     try runPathCommand(
-                        command,
+                        plan.primaryCommand,
                         folder: folder,
                         includeHidden: includeHidden,
                         continuation: continuation
@@ -217,18 +233,8 @@ final class FindSearchService: FindSearching {
                         }
                     }
                 } else {
-                    let command = try builder.makeCommand(
-                        folder: folder,
-                        query: query,
-                        extensions: extensions,
-                        caseSensitive: caseSensitive,
-                        includeHidden: includeHidden,
-                        target: target,
-                        matchMode: matchMode,
-                        searchKind: searchKind
-                    )
                     try runPathCommand(
-                        command,
+                        plan.primaryCommand,
                         folder: folder,
                         includeHidden: includeHidden,
                         continuation: continuation
@@ -236,14 +242,7 @@ final class FindSearchService: FindSearching {
                         yieldNameResult(url)
                     }
 
-                    if !caseSensitive && !trimmedQuery.isEmpty {
-                        let fallbackCommand = try builder.makeNameEnumerationCommand(
-                            folder: folder,
-                            extensions: extensions,
-                            caseSensitive: caseSensitive,
-                            includeHidden: includeHidden,
-                            target: target
-                        )
+                    if let fallbackCommand = plan.unicodeFallbackCommand {
                         let candidateURLs = try collectPaths(
                             with: fallbackCommand,
                             folder: folder,
@@ -273,18 +272,8 @@ final class FindSearchService: FindSearching {
                         continuation.yield(.result(SearchResult(url: url)))
                     }
                 }
-                let grepCommand = try builder.makeCommand(
-                    folder: folder,
-                    query: query,
-                    extensions: extensions,
-                    caseSensitive: caseSensitive,
-                    includeHidden: includeHidden,
-                    target: target,
-                    matchMode: matchMode,
-                    searchKind: searchKind
-                )
                 try runPathCommand(
-                    grepCommand,
+                    plan.primaryCommand,
                     folder: folder,
                     includeHidden: includeHidden,
                     continuation: continuation,
@@ -295,13 +284,7 @@ final class FindSearchService: FindSearching {
                     throw FindSearchServiceError.cancelled
                 }
 
-                if !caseSensitive {
-                    let fallbackCommand = try builder.makeContentEnumerationCommand(
-                        folder: folder,
-                        extensions: extensions,
-                        caseSensitive: caseSensitive,
-                        includeHidden: includeHidden
-                    )
+                if let fallbackCommand = plan.unicodeFallbackCommand {
                     let candidateURLs = try collectPaths(
                         with: fallbackCommand,
                         folder: folder,
@@ -320,12 +303,7 @@ final class FindSearchService: FindSearching {
                     }
                 }
 
-                if let pdfCommand = try builder.makePDFEnumerationCommand(
-                    folder: folder,
-                    extensions: extensions,
-                    caseSensitive: caseSensitive,
-                    includeHidden: includeHidden
-                ) {
+                if let pdfCommand = plan.pdfEnumerationCommand {
                     let pdfURLs = try collectPaths(
                         with: pdfCommand,
                         folder: folder,
@@ -344,12 +322,7 @@ final class FindSearchService: FindSearching {
                     }
                 }
 
-                if let docxCommand = try builder.makeDOCXEnumerationCommand(
-                    folder: folder,
-                    extensions: extensions,
-                    caseSensitive: caseSensitive,
-                    includeHidden: includeHidden
-                ) {
+                if let docxCommand = plan.docxEnumerationCommand {
                     let docxURLs = try collectPaths(
                         with: docxCommand,
                         folder: folder,

@@ -172,6 +172,33 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.status, .finished(resultCount: 2, warning: nil))
     }
 
+    func testExecutionExplanationIsExposedForTheInspector() async throws {
+        let service = StreamingFindSearchService()
+        let viewModel = SearchViewModel(searchService: service)
+        viewModel.selectFolder(URL(fileURLWithPath: "/tmp"))
+        viewModel.query = "notes"
+        viewModel.startSearch()
+        try await waitForStream(service)
+
+        let explanation = SearchExplanation(
+            title: "How this Names search worked",
+            summary: "Names only.",
+            stages: [SearchExplanationStage(
+                id: "find-name-match",
+                title: "Match names with find",
+                detail: "find matched names.",
+                command: nil,
+                lessons: []
+            )]
+        )
+        service.send(.explanation(explanation))
+        try await Task.sleep(nanoseconds: 5_000_000)
+
+        XCTAssertEqual(viewModel.lastSearchExplanation, explanation)
+
+        viewModel.cancelSearch()
+    }
+
     func testSearchActivityMessageIncludesLiveCountAndElapsedTime() throws {
         let viewModel = SearchViewModel(searchService: MockFindSearchService())
         viewModel.selectFolder(URL(fileURLWithPath: "/tmp"))
