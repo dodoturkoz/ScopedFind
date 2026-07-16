@@ -191,27 +191,13 @@ struct SearchExplanationBuilder {
             stages.append(commandStage(
                 id: "find-content-unicode-fallback",
                 title: "Check Unicode-aware text matches",
-                detail: "Because grep -i does not cover every Unicode and diacritic case, find enumerates eligible files and ScopedFind reads decodable non-PDF, non-DOCX text with Foundation for a folded comparison.",
+                detail: "Because grep -i does not cover every Unicode and diacritic case, find enumerates eligible files and ScopedFind reads decodable ordinary text with Foundation for a folded comparison. Specialized document formats are handled by their own passes.",
                 command: fallbackCommand
             ))
         }
 
-        if let pdfCommand = plan.pdfEnumerationCommand {
-            stages.append(commandStage(
-                id: "find-pdfkit",
-                title: "Search text-based PDFs",
-                detail: "find enumerates eligible PDF files. PDFKit then extracts page text in the app and ScopedFind looks for the literal query. Image-only PDFs are not OCRed.",
-                command: pdfCommand
-            ))
-        }
-
-        if let docxCommand = plan.docxEnumerationCommand {
-            stages.append(commandStage(
-                id: "find-docx",
-                title: "Search DOCX text",
-                detail: "find enumerates eligible .docx files. ScopedFind then reads their ZIP/XML text in process; no Office parser or external command is used.",
-                command: docxCommand
-            ))
+        for documentPass in plan.documentSearchPasses {
+            stages.append(documentStage(documentPass))
         }
 
         if filters.isActive {
@@ -223,12 +209,75 @@ struct SearchExplanationBuilder {
             : "the selected extensions"
         let caseSummary = caseSensitive ? "literal, case-sensitive matching" : "case-insensitive matching with a Unicode-aware fallback"
         let hiddenSummary = includeHidden ? "including hidden paths" : "with hidden paths pruned"
+        let passSummary = formattedList(
+            ["ordinary files"] + plan.documentSearchPasses.map(documentSummaryLabel)
+        )
 
         return SearchExplanation(
             title: "How this Contents search worked",
-            summary: "Contents mode used separate passes for ordinary files, PDFs, and DOCX documents across \(extensionSummary), with \(caseSummary) and \(hiddenSummary).",
+            summary: "Contents mode used separate passes for \(passSummary) across \(extensionSummary), with \(caseSummary) and \(hiddenSummary).",
             stages: stages
         )
+    }
+
+    private func documentSummaryLabel(_ pass: DocumentSearchPass) -> String {
+        switch pass.kind {
+        case .pdf:
+            return "PDFs"
+        case .word:
+            return "Word documents"
+        case .spreadsheet:
+            return "spreadsheets"
+        case .presentation:
+            return "presentations"
+        }
+    }
+
+    private func formattedList(_ values: [String]) -> String {
+        guard let lastValue = values.last else {
+            return ""
+        }
+        guard values.count > 1 else {
+            return lastValue
+        }
+        guard values.count > 2 else {
+            return "\(values[0]) and \(lastValue)"
+        }
+
+        return "\(values.dropLast().joined(separator: ", ")), and \(lastValue)"
+    }
+
+    private func documentStage(_ pass: DocumentSearchPass) -> SearchExplanationStage {
+        switch pass.kind {
+        case .pdf:
+            return commandStage(
+                id: "find-pdfkit",
+                title: "Search text-based PDFs",
+                detail: "find enumerates eligible PDF files. PDFKit then extracts page text in the app and ScopedFind looks for the literal query. Image-only PDFs are not OCRed.",
+                command: pass.command
+            )
+        case .word:
+            return commandStage(
+                id: "find-docx",
+                title: "Search Word document text",
+                detail: "find enumerates eligible .docx files. ScopedFind then reads document, header, footer, note, and comment ZIP/XML text in process; no Office parser or external command is used.",
+                command: pass.command
+            )
+        case .spreadsheet:
+            return commandStage(
+                id: "find-xlsx",
+                title: "Search Excel workbook text",
+                detail: "find enumerates eligible .xlsx and .xlsm files. ScopedFind reads shared and inline cell text, stored formulas and values, and comments from their ZIP/XML parts in process. Display formatting and formula recalculation are not reproduced.",
+                command: pass.command
+            )
+        case .presentation:
+            return commandStage(
+                id: "find-pptx",
+                title: "Search PowerPoint presentation text",
+                detail: "find enumerates eligible .pptx and .pptm files. ScopedFind reads slide text, speaker notes, comments, and comment-author text from their ZIP/XML parts in process.",
+                command: pass.command
+            )
+        }
     }
 
     private func commandStage(

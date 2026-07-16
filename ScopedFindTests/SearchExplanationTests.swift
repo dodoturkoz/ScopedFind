@@ -86,7 +86,7 @@ final class SearchExplanationTests: XCTestCase {
         })
     }
 
-    func testContentsExplanationShowsGrepPDFKitAndDOCXAsSeparateStages() throws {
+    func testContentsExplanationShowsEverySpecializedDocumentPass() throws {
         let plan = try FindCommandBuilder().makeExecutionPlan(
             folder: temporaryFolder,
             query: "needle",
@@ -111,11 +111,54 @@ final class SearchExplanationTests: XCTestCase {
 
         XCTAssertEqual(
             explanation.stages.map(\.id),
-            ["find-exec-grep", "find-content-unicode-fallback", "find-pdfkit", "find-docx"]
+            [
+                "find-exec-grep",
+                "find-content-unicode-fallback",
+                "find-pdfkit",
+                "find-docx",
+                "find-xlsx",
+                "find-pptx"
+            ]
         )
         XCTAssertTrue(explanation.stages[0].command?.arguments.contains("/usr/bin/grep") == true)
         XCTAssertTrue(explanation.stages[2].detail.contains("not OCRed"))
         XCTAssertTrue(explanation.stages[3].detail.contains("ZIP/XML"))
+        XCTAssertTrue(explanation.stages[4].detail.contains("stored formulas and values"))
+        XCTAssertTrue(explanation.stages[5].detail.contains("speaker notes"))
+        XCTAssertTrue(explanation.summary.contains("spreadsheets"))
+        XCTAssertTrue(explanation.summary.contains("presentations"))
+    }
+
+    func testContentsExplanationOnlyIncludesSelectedOfficeFormatPasses() throws {
+        let plan = try FindCommandBuilder().makeExecutionPlan(
+            folder: temporaryFolder,
+            query: "needle",
+            extensions: "xlsx,pptm",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .all,
+            matchMode: .contains,
+            filtersActive: false,
+            searchKind: .contents
+        )
+        let explanation = SearchExplanationBuilder().makeExplanation(
+            plan: plan,
+            query: "needle",
+            extensions: "xlsx,pptm",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .all,
+            matchMode: .contains,
+            filters: SearchFilters()
+        )
+
+        XCTAssertEqual(
+            explanation.stages.map(\.id),
+            ["find-exec-grep", "find-content-unicode-fallback", "find-xlsx", "find-pptx"]
+        )
+        XCTAssertTrue(explanation.summary.contains("ordinary files, spreadsheets, and presentations"))
+        XCTAssertFalse(explanation.summary.contains("PDFs"))
+        XCTAssertFalse(explanation.summary.contains("Word documents"))
     }
 
     func testActiveFiltersAreDescribedAsAppSideExactByteChecks() throws {

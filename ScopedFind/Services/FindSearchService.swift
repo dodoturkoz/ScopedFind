@@ -303,40 +303,26 @@ final class FindSearchService: FindSearching {
                     }
                 }
 
-                if let pdfCommand = plan.pdfEnumerationCommand {
-                    let pdfURLs = try collectPaths(
-                        with: pdfCommand,
+                for documentPass in plan.documentSearchPasses {
+                    let documentURLs = try collectPaths(
+                        with: documentPass.command,
                         folder: folder,
                         includeHidden: includeHidden,
                         continuation: continuation
                     )
 
-                    for pdfURL in pdfURLs {
+                    for documentURL in documentURLs {
                         if isCancellationRequested() {
                             throw FindSearchServiceError.cancelled
                         }
-                        if filters.matches(pdfURL) &&
-                            pdfDocument(at: pdfURL, contains: trimmedQuery, caseSensitive: caseSensitive) {
-                            yieldContentResult(pdfURL)
-                        }
-                    }
-                }
-
-                if let docxCommand = plan.docxEnumerationCommand {
-                    let docxURLs = try collectPaths(
-                        with: docxCommand,
-                        folder: folder,
-                        includeHidden: includeHidden,
-                        continuation: continuation
-                    )
-
-                    for docxURL in docxURLs {
-                        if isCancellationRequested() {
-                            throw FindSearchServiceError.cancelled
-                        }
-                        if filters.matches(docxURL) &&
-                            docxDocument(at: docxURL, contains: trimmedQuery, caseSensitive: caseSensitive) {
-                            yieldContentResult(docxURL)
+                        if filters.matches(documentURL) &&
+                            contentDocument(
+                                at: documentURL,
+                                kind: documentPass.kind,
+                                contains: trimmedQuery,
+                                caseSensitive: caseSensitive
+                            ) {
+                            yieldContentResult(documentURL)
                         }
                     }
                 }
@@ -514,7 +500,10 @@ final class FindSearchService: FindSearching {
         }
 
         let documentExtension = url.pathExtension.lowercased()
-        guard documentExtension != "pdf", documentExtension != "docx" else {
+        let specializedExtensions = Set(
+            ContentDocumentKind.allCases.flatMap(\.fileExtensions)
+        )
+        guard !specializedExtensions.contains(documentExtension) else {
             return false
         }
 
@@ -532,8 +521,9 @@ final class FindSearchService: FindSearching {
         return UnicodeTextMatcher.contains(query, in: text, caseSensitive: caseSensitive)
     }
 
-    private func docxDocument(
+    private func contentDocument(
         at url: URL,
+        kind: ContentDocumentKind,
         contains query: String,
         caseSensitive: Bool
     ) -> Bool {
@@ -541,11 +531,25 @@ final class FindSearchService: FindSearching {
             return false
         }
 
-        guard let text = try? DOCXTextExtractor.text(from: url) else {
-            return false
+        switch kind {
+        case .pdf:
+            return pdfDocument(at: url, contains: query, caseSensitive: caseSensitive)
+        case .word:
+            guard let text = try? DOCXTextExtractor.text(from: url) else {
+                return false
+            }
+            return UnicodeTextMatcher.contains(query, in: text, caseSensitive: caseSensitive)
+        case .spreadsheet:
+            guard let text = try? XLSXTextExtractor.text(from: url) else {
+                return false
+            }
+            return UnicodeTextMatcher.contains(query, in: text, caseSensitive: caseSensitive)
+        case .presentation:
+            guard let text = try? PPTXTextExtractor.text(from: url) else {
+                return false
+            }
+            return UnicodeTextMatcher.contains(query, in: text, caseSensitive: caseSensitive)
         }
-
-        return UnicodeTextMatcher.contains(query, in: text, caseSensitive: caseSensitive)
     }
 
     private static func looksBinary(_ data: Data) -> Bool {
@@ -793,7 +797,7 @@ private enum UnicodeTextMatcher {
 
 private struct DOCXTextExtractor {
     static func text(from url: URL) throws -> String {
-        let archive = try ZIPArchive(data: Data(contentsOf: url))
+        let archive = try ZIPArchive(contentsOf: url)
         var extractedText = ""
 
         for entryName in archive.entryNames where isWordTextEntry(entryName) {
@@ -829,6 +833,87 @@ private struct DOCXTextExtractor {
         }
 
         return false
+    }
+}
+
+private struct XLSXTextExtractor {
+    static func text(from url: URL) throws -> String {
+        let archive = try ZIPArchive(contentsOf: url)
+        let sharedStrings: [String]
+        if let sharedStringData = try archive.data(forEntryNamed: "xl/sharedStrings.xml") {
+            sharedStrings = SpreadsheetSharedStringsExtractor.strings(from: sharedStringData)
+        } else {
+            sharedStrings = []
+        }
+
+        var extractedParts: [String] = []
+        let worksheetNames = archive.entryNames.filter {
+            $0.hasPrefix("xl/worksheets/") && $0.hasSuffix(".xml")
+        }
+        for entryName in worksheetNames {
+            guard let worksheetData = try archive.data(forEntryNamed: entryName) else {
+                continue
+            }
+            let worksheetText = SpreadsheetWorksheetTextExtractor.text(
+                from: worksheetData,
+                sharedStrings: sharedStrings
+            )
+            if !worksheetText.isEmpty {
+                extractedParts.append(worksheetText)
+            }
+        }
+
+        let commentNames = archive.entryNames.filter {
+            ($0.hasPrefix("xl/comments") || $0.hasPrefix("xl/threadedComments/")) &&
+                $0.hasSuffix(".xml")
+        }
+        for entryName in commentNames {
+            guard let commentData = try archive.data(forEntryNamed: entryName) else {
+                continue
+            }
+            let commentText = OfficeTextXMLExtractor.text(
+                from: commentData,
+                textElementNames: ["t", "text"]
+            )
+            if !commentText.isEmpty {
+                extractedParts.append(commentText)
+            }
+        }
+
+        return extractedParts.joined(separator: "\n")
+    }
+}
+
+private struct PPTXTextExtractor {
+    static func text(from url: URL) throws -> String {
+        let archive = try ZIPArchive(contentsOf: url)
+        let textEntryNames = archive.entryNames.filter { entryName in
+            guard entryName.hasSuffix(".xml") else {
+                return false
+            }
+
+            return entryName.hasPrefix("ppt/slides/slide") ||
+                entryName.hasPrefix("ppt/notesSlides/notesSlide") ||
+                entryName.hasPrefix("ppt/comments/") ||
+                entryName.hasPrefix("ppt/commentAuthors")
+        }
+
+        var extractedParts: [String] = []
+        for entryName in textEntryNames {
+            guard let xmlData = try archive.data(forEntryNamed: entryName) else {
+                continue
+            }
+            let entryText = OfficeTextXMLExtractor.text(
+                from: xmlData,
+                textElementNames: ["t", "text"],
+                textAttributeNames: ["text"]
+            )
+            if !entryText.isEmpty {
+                extractedParts.append(entryText)
+            }
+        }
+
+        return extractedParts.joined(separator: "\n")
     }
 }
 
@@ -901,15 +986,306 @@ private final class WordXMLTextExtractor: NSObject, XMLParserDelegate {
     }
 }
 
-private struct ZIPArchive {
+private final class SpreadsheetSharedStringsExtractor: NSObject, XMLParserDelegate {
+    private var strings: [String] = []
+    private var currentString = ""
+    private var isInsideSharedString = false
+    private var isInsideTextElement = false
+
+    static func strings(from data: Data) -> [String] {
+        let delegate = SpreadsheetSharedStringsExtractor()
+        let parser = XMLParser(data: data)
+        parser.delegate = delegate
+
+        guard parser.parse() else {
+            return []
+        }
+
+        return delegate.strings
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didStartElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?,
+        attributes attributeDict: [String: String] = [:]
+    ) {
+        switch xmlLocalName(elementName) {
+        case "si":
+            isInsideSharedString = true
+            currentString = ""
+        case "t":
+            if isInsideSharedString {
+                isInsideTextElement = true
+            }
+        default:
+            break
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        if isInsideTextElement {
+            currentString.append(string)
+        }
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didEndElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?
+    ) {
+        switch xmlLocalName(elementName) {
+        case "t":
+            isInsideTextElement = false
+        case "si":
+            strings.append(currentString)
+            currentString = ""
+            isInsideSharedString = false
+        default:
+            break
+        }
+    }
+}
+
+private final class SpreadsheetWorksheetTextExtractor: NSObject, XMLParserDelegate {
+    private enum Capture {
+        case formula
+        case value
+        case inlineText
+    }
+
+    private let sharedStrings: [String]
+    private var extractedParts: [String] = []
+    private var currentCellType: String?
+    private var currentFormula = ""
+    private var currentValue = ""
+    private var currentInlineText = ""
+    private var capture: Capture?
+
+    init(sharedStrings: [String]) {
+        self.sharedStrings = sharedStrings
+    }
+
+    static func text(from data: Data, sharedStrings: [String]) -> String {
+        let delegate = SpreadsheetWorksheetTextExtractor(sharedStrings: sharedStrings)
+        let parser = XMLParser(data: data)
+        parser.delegate = delegate
+
+        guard parser.parse() else {
+            return ""
+        }
+
+        return delegate.extractedParts.joined(separator: "\n")
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didStartElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?,
+        attributes attributeDict: [String: String] = [:]
+    ) {
+        switch xmlLocalName(elementName) {
+        case "c":
+            currentCellType = attributeDict["t"]
+            currentFormula = ""
+            currentValue = ""
+            currentInlineText = ""
+        case "f":
+            capture = .formula
+        case "v":
+            capture = .value
+        case "t":
+            if currentCellType == "inlineStr" {
+                capture = .inlineText
+            }
+        default:
+            break
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        switch capture {
+        case .formula:
+            currentFormula.append(string)
+        case .value:
+            currentValue.append(string)
+        case .inlineText:
+            currentInlineText.append(string)
+        case nil:
+            break
+        }
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didEndElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?
+    ) {
+        switch xmlLocalName(elementName) {
+        case "f", "v", "t":
+            capture = nil
+        case "c":
+            appendCurrentCell()
+            currentCellType = nil
+        default:
+            break
+        }
+    }
+
+    private func appendCurrentCell() {
+        let trimmedFormula = currentFormula.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedFormula.isEmpty {
+            extractedParts.append(trimmedFormula.hasPrefix("=") ? trimmedFormula : "=\(trimmedFormula)")
+        }
+
+        let cellText: String
+        switch currentCellType {
+        case "s":
+            let trimmedValue = currentValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let index = Int(trimmedValue), sharedStrings.indices.contains(index) {
+                cellText = sharedStrings[index]
+            } else {
+                cellText = ""
+            }
+        case "inlineStr":
+            cellText = currentInlineText
+        default:
+            cellText = currentValue
+        }
+
+        if !cellText.isEmpty {
+            extractedParts.append(cellText)
+        }
+    }
+}
+
+private final class OfficeTextXMLExtractor: NSObject, XMLParserDelegate {
+    private let textElementNames: Set<String>
+    private let textAttributeNames: Set<String>
+    private var extractedText = ""
+    private var textElementDepth = 0
+
+    init(textElementNames: Set<String>, textAttributeNames: Set<String>) {
+        self.textElementNames = textElementNames
+        self.textAttributeNames = textAttributeNames
+    }
+
+    static func text(
+        from data: Data,
+        textElementNames: Set<String>,
+        textAttributeNames: Set<String> = []
+    ) -> String {
+        let delegate = OfficeTextXMLExtractor(
+            textElementNames: textElementNames,
+            textAttributeNames: textAttributeNames
+        )
+        let parser = XMLParser(data: data)
+        parser.delegate = delegate
+
+        guard parser.parse() else {
+            return ""
+        }
+
+        return delegate.extractedText
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didStartElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?,
+        attributes attributeDict: [String: String] = [:]
+    ) {
+        let localName = xmlLocalName(elementName)
+        if textElementNames.contains(localName) {
+            textElementDepth += 1
+        }
+
+        for (attributeName, value) in attributeDict
+        where textAttributeNames.contains(xmlLocalName(attributeName)) && !value.isEmpty {
+            appendPart(value)
+        }
+
+        switch localName {
+        case "tab":
+            extractedText.append("\t")
+        case "br", "cr":
+            extractedText.append("\n")
+        default:
+            break
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        if textElementDepth > 0 {
+            extractedText.append(string)
+        }
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didEndElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?
+    ) {
+        let localName = xmlLocalName(elementName)
+        if textElementNames.contains(localName) {
+            textElementDepth = max(0, textElementDepth - 1)
+            extractedText.append("\n")
+        } else if localName == "p" {
+            extractedText.append("\n")
+        }
+    }
+
+    private func appendPart(_ value: String) {
+        if !extractedText.isEmpty && !extractedText.hasSuffix("\n") {
+            extractedText.append("\n")
+        }
+        extractedText.append(value)
+        extractedText.append("\n")
+    }
+}
+
+private func xmlLocalName(_ elementName: String) -> String {
+    guard let separatorIndex = elementName.lastIndex(of: ":") else {
+        return elementName
+    }
+
+    return String(elementName[elementName.index(after: separatorIndex)...])
+}
+
+private final class ZIPArchive {
+    private static let maximumArchiveSize = 512 * 1_024 * 1_024
+    private static let maximumEntryCount = 20_000
+    private static let maximumEntrySize = 64 * 1_024 * 1_024
+    private static let maximumExtractedSize = 128 * 1_024 * 1_024
+    private static let maximumCompressionRatio: UInt64 = 1_000
+
     private let data: Data
     private let entriesByName: [String: ZIPEntry]
+    private var extractedSize = 0
 
     var entryNames: [String] {
         Array(entriesByName.keys).sorted()
     }
 
+    convenience init(contentsOf url: URL) throws {
+        let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
+        if let fileSize = resourceValues.fileSize, fileSize > Self.maximumArchiveSize {
+            throw ZIPArchiveError.archiveTooLarge
+        }
+
+        try self.init(data: Data(contentsOf: url, options: .mappedIfSafe))
+    }
+
     init(data: Data) throws {
+        guard data.count <= Self.maximumArchiveSize else {
+            throw ZIPArchiveError.archiveTooLarge
+        }
         self.data = data
         self.entriesByName = try Self.readCentralDirectory(in: data)
     }
@@ -928,21 +1304,45 @@ private struct ZIPArchive {
         let extraFieldLength = Int(try data.zipUInt16(at: localHeaderOffset + 28))
         let compressedDataStart = localHeaderOffset + 30 + fileNameLength + extraFieldLength
         let compressedDataEnd = compressedDataStart + Int(entry.compressedSize)
-        let compressedData = try data.zipData(in: compressedDataStart..<compressedDataEnd)
 
+        guard Int(entry.uncompressedSize) <= Self.maximumEntrySize,
+              Int(entry.compressedSize) <= Self.maximumEntrySize else {
+            throw ZIPArchiveError.entryTooLarge
+        }
+        if entry.compressionMethod == 0, entry.compressedSize != entry.uncompressedSize {
+            throw ZIPArchiveError.invalidStoredEntrySize
+        }
+        if entry.uncompressedSize > 1_024 * 1_024 {
+            guard entry.compressedSize > 0,
+                  UInt64(entry.uncompressedSize) <= UInt64(entry.compressedSize) * Self.maximumCompressionRatio else {
+                throw ZIPArchiveError.suspiciousCompressionRatio
+            }
+        }
+        guard extractedSize <= Self.maximumExtractedSize - Int(entry.uncompressedSize) else {
+            throw ZIPArchiveError.tooMuchExtractedData
+        }
+
+        let compressedData = try data.zipData(in: compressedDataStart..<compressedDataEnd)
+        let extractedData: Data
         switch entry.compressionMethod {
         case 0:
-            return compressedData
+            extractedData = compressedData
         case 8:
-            return try Self.inflate(compressedData, uncompressedSize: Int(entry.uncompressedSize))
+            extractedData = try Self.inflate(compressedData, uncompressedSize: Int(entry.uncompressedSize))
         default:
             throw ZIPArchiveError.unsupportedCompressionMethod(entry.compressionMethod)
         }
+
+        extractedSize += extractedData.count
+        return extractedData
     }
 
     private static func readCentralDirectory(in data: Data) throws -> [String: ZIPEntry] {
         let endOfCentralDirectoryOffset = try findEndOfCentralDirectory(in: data)
         let entryCount = Int(try data.zipUInt16(at: endOfCentralDirectoryOffset + 10))
+        guard entryCount <= maximumEntryCount else {
+            throw ZIPArchiveError.tooManyEntries
+        }
         let centralDirectoryOffset = Int(try data.zipUInt32(at: endOfCentralDirectoryOffset + 16))
         var entries: [String: ZIPEntry] = [:]
         var offset = centralDirectoryOffset
@@ -1023,12 +1423,8 @@ private struct ZIPArchive {
             }
         }
 
-        guard decodedCount > 0 else {
+        guard decodedCount == uncompressedSize else {
             throw ZIPArchiveError.couldNotDecompressEntry
-        }
-
-        if decodedCount < destination.count {
-            destination.removeSubrange(decodedCount..<destination.count)
         }
 
         return destination
@@ -1044,9 +1440,15 @@ private struct ZIPEntry {
 }
 
 private enum ZIPArchiveError: Error {
+    case archiveTooLarge
+    case tooManyEntries
+    case entryTooLarge
+    case tooMuchExtractedData
+    case suspiciousCompressionRatio
     case missingEndOfCentralDirectory
     case invalidCentralDirectory
     case invalidLocalFileHeader
+    case invalidStoredEntrySize
     case unsupportedCompressionMethod(UInt16)
     case couldNotDecompressEntry
     case outOfBoundsRead

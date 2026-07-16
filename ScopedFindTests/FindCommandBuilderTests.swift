@@ -382,6 +382,84 @@ final class FindCommandBuilderTests: XCTestCase {
         XCTAssertNil(command)
     }
 
+    func testSpreadsheetEnumerationCommandIncludesXLSXAndXLSM() throws {
+        let command = try XCTUnwrap(
+            FindCommandBuilder().makeSpreadsheetEnumerationCommand(
+                folder: temporaryFolder,
+                extensions: "",
+                caseSensitive: true,
+                includeHidden: true
+            )
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [
+                temporaryFolder.path,
+                "-type", "f",
+                "(", "-iname", "*.xlsx", "-o", "-iname", "*.xlsm", ")",
+                "-print0"
+            ]
+        )
+    }
+
+    func testSpreadsheetEnumerationCommandHonorsMatchingExtensionFilter() throws {
+        let command = try XCTUnwrap(
+            FindCommandBuilder().makeSpreadsheetEnumerationCommand(
+                folder: temporaryFolder,
+                extensions: "txt,XLSM",
+                caseSensitive: true,
+                includeHidden: true
+            )
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [temporaryFolder.path, "-type", "f", "(", "-name", "*.XLSM", ")", "-print0"]
+        )
+    }
+
+    func testPresentationEnumerationCommandIncludesPPTXAndPPTM() throws {
+        let command = try XCTUnwrap(
+            FindCommandBuilder().makePresentationEnumerationCommand(
+                folder: temporaryFolder,
+                extensions: "",
+                caseSensitive: false,
+                includeHidden: false
+            )
+        )
+
+        XCTAssertEqual(
+            command.arguments,
+            [
+                temporaryFolder.path,
+                "!", "-path", temporaryFolder.path, "-name", ".*", "-prune", "-o",
+                "-type", "f",
+                "(", "-iname", "*.pptx", "-o", "-iname", "*.pptm", ")",
+                "-print0"
+            ]
+        )
+    }
+
+    func testDocumentSearchPassesFollowExecutionOrderAndExtensionFilter() throws {
+        let passes = try FindCommandBuilder().makeDocumentSearchPasses(
+            folder: temporaryFolder,
+            extensions: "xlsx,pptm",
+            caseSensitive: false,
+            includeHidden: true
+        )
+
+        XCTAssertEqual(passes.map(\.kind), [.spreadsheet, .presentation])
+        XCTAssertEqual(
+            passes[0].command.arguments,
+            [temporaryFolder.path, "-type", "f", "(", "-iname", "*.xlsx", ")", "-print0"]
+        )
+        XCTAssertEqual(
+            passes[1].command.arguments,
+            [temporaryFolder.path, "-type", "f", "(", "-iname", "*.pptm", ")", "-print0"]
+        )
+    }
+
     func testNameEnumerationCommandCanListExtensionFilteredCandidates() throws {
         let command = try FindCommandBuilder().makeNameEnumerationCommand(
             folder: temporaryFolder,

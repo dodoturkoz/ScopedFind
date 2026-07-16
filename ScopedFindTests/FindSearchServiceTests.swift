@@ -796,6 +796,160 @@ final class FindSearchServiceTests: XCTestCase {
         XCTAssertEqual(Set(results.map(\.url.path)), Set([expected.path]))
     }
 
+    func testContentSearchCanSearchXLSXCellsFormulasValuesAndComments() async throws {
+        let workbook = temporaryFolder.appendingPathComponent("budget.xlsx")
+        try writeSearchableXLSX(
+            sharedText: "shared cell marker",
+            inlineText: "inline cell marker",
+            formula: "SUM(A1:A2)",
+            value: "424242",
+            comment: "review comment marker",
+            to: workbook
+        )
+
+        for query in [
+            "shared cell marker",
+            "inline cell marker",
+            "=SUM(A1:A2)",
+            "424242",
+            "review comment marker"
+        ] {
+            let results = try await collectResults(
+                query: query,
+                extensions: "xlsx",
+                includeHidden: true,
+                target: .all,
+                searchKind: .contents
+            )
+
+            XCTAssertEqual(Set(results.map(\.url.path)), Set([workbook.path]), "Query: \(query)")
+        }
+    }
+
+    func testXLSXContentSearchSupportsXLSMAndUnicodeMatching() async throws {
+        let workbook = temporaryFolder.appendingPathComponent("macro.xlsm")
+        try writeSearchableXLSX(
+            sharedText: "şevketibostan",
+            inlineText: "",
+            formula: "",
+            value: "",
+            comment: "",
+            to: workbook
+        )
+
+        let insensitiveResults = try await collectResults(
+            query: "sevket",
+            extensions: "xlsm",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+        let sensitiveResults = try await collectResults(
+            query: "sevket",
+            extensions: "xlsm",
+            caseSensitive: true,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(insensitiveResults.map(\.url.path)), Set([workbook.path]))
+        XCTAssertEqual(sensitiveResults, [])
+    }
+
+    func testContentSearchCanSearchPPTXSlidesNotesAndComments() async throws {
+        let presentation = temporaryFolder.appendingPathComponent("planning.pptx")
+        try writeSearchablePPTX(
+            slideText: "slide marker",
+            notesText: "speaker notes marker",
+            commentText: "presentation comment marker",
+            to: presentation
+        )
+
+        for query in ["slide marker", "speaker notes marker", "presentation comment marker"] {
+            let results = try await collectResults(
+                query: query,
+                extensions: "pptx",
+                includeHidden: true,
+                target: .all,
+                searchKind: .contents
+            )
+
+            XCTAssertEqual(Set(results.map(\.url.path)), Set([presentation.path]), "Query: \(query)")
+        }
+    }
+
+    func testPPTXContentSearchSupportsPPTMAndUnicodeMatching() async throws {
+        let presentation = temporaryFolder.appendingPathComponent("macro.pptm")
+        try writeSearchablePPTX(
+            slideText: "şevketibostan",
+            notesText: "",
+            commentText: "",
+            to: presentation
+        )
+
+        let results = try await collectResults(
+            query: "sevket",
+            extensions: "pptm",
+            caseSensitive: false,
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([presentation.path]))
+    }
+
+    func testModernOfficeContentSearchHonorsHiddenPathAndExtensionFilters() async throws {
+        let visibleWorkbook = temporaryFolder.appendingPathComponent("visible.xlsx")
+        let hiddenDirectory = temporaryFolder.appendingPathComponent(".hidden", isDirectory: true)
+        let hiddenPresentation = hiddenDirectory.appendingPathComponent("hidden.pptx")
+        try FileManager.default.createDirectory(at: hiddenDirectory, withIntermediateDirectories: true)
+        try writeSearchableXLSX(
+            sharedText: "needle",
+            inlineText: "",
+            formula: "",
+            value: "",
+            comment: "",
+            to: visibleWorkbook
+        )
+        try writeSearchablePPTX(
+            slideText: "needle",
+            notesText: "",
+            commentText: "",
+            to: hiddenPresentation
+        )
+
+        let results = try await collectResults(
+            query: "needle",
+            extensions: "xlsx,pptx",
+            includeHidden: false,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(Set(results.map(\.url.path)), Set([visibleWorkbook.path]))
+    }
+
+    func testLegacyXLSAndPPTContentsRemainUnsupported() async throws {
+        let legacyWorkbook = temporaryFolder.appendingPathComponent("legacy.xls")
+        let legacyPresentation = temporaryFolder.appendingPathComponent("legacy.ppt")
+        let binaryContents = Data([0, 1, 2]) + Data("legacy needle".utf8)
+        try binaryContents.write(to: legacyWorkbook)
+        try binaryContents.write(to: legacyPresentation)
+
+        let results = try await collectResults(
+            query: "legacy needle",
+            extensions: "xls,ppt",
+            includeHidden: true,
+            target: .all,
+            searchKind: .contents
+        )
+
+        XCTAssertEqual(results, [])
+    }
+
     func testPermissionDeniedSurfacesWarningAndKeepsAccessibleResults() async throws {
         let visibleFile = temporaryFolder.appendingPathComponent("permission-note.txt")
         try Data().write(to: visibleFile)
@@ -938,6 +1092,93 @@ final class FindSearchServiceTests: XCTestCase {
             entries: [("word/document.xml", Data(documentXML.utf8))],
             to: url
         )
+    }
+
+    private func writeSearchableXLSX(
+        sharedText: String,
+        inlineText: String,
+        formula: String,
+        value: String,
+        comment: String,
+        to url: URL
+    ) throws {
+        let sharedStringsXML = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+          <si><t>\(xmlEscaped(sharedText))</t></si>
+        </sst>
+        """
+        let worksheetXML = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+          <sheetData>
+            <row r="1">
+              <c r="A1" t="s"><v>0</v></c>
+              <c r="B1" t="inlineStr"><is><t>\(xmlEscaped(inlineText))</t></is></c>
+              <c r="C1"><f>\(xmlEscaped(formula))</f><v>\(xmlEscaped(value))</v></c>
+            </row>
+          </sheetData>
+        </worksheet>
+        """
+        let commentsXML = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <comments xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+          <commentList><comment ref="A1"><text><t>\(xmlEscaped(comment))</t></text></comment></commentList>
+        </comments>
+        """
+
+        try writeZIP(
+            entries: [
+                ("xl/sharedStrings.xml", Data(sharedStringsXML.utf8)),
+                ("xl/worksheets/sheet1.xml", Data(worksheetXML.utf8)),
+                ("xl/comments1.xml", Data(commentsXML.utf8))
+            ],
+            to: url
+        )
+    }
+
+    private func writeSearchablePPTX(
+        slideText: String,
+        notesText: String,
+        commentText: String,
+        to url: URL
+    ) throws {
+        let slideXML = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+               xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>\(xmlEscaped(slideText))</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld>
+        </p:sld>
+        """
+        let notesXML = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <p:notes xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                 xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>\(xmlEscaped(notesText))</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld>
+        </p:notes>
+        """
+        let commentsXML = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <p:cmLst xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+          <p:cm><p:text>\(xmlEscaped(commentText))</p:text></p:cm>
+        </p:cmLst>
+        """
+
+        try writeZIP(
+            entries: [
+                ("ppt/slides/slide1.xml", Data(slideXML.utf8)),
+                ("ppt/notesSlides/notesSlide1.xml", Data(notesXML.utf8)),
+                ("ppt/comments/comment1.xml", Data(commentsXML.utf8))
+            ],
+            to: url
+        )
+    }
+
+    private func xmlEscaped(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
     }
 
     private func writeZIP(entries: [(name: String, data: Data)], to url: URL) throws {

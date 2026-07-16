@@ -30,8 +30,32 @@ struct FindSearchExecutionPlan: Equatable {
     let strategy: Strategy
     let primaryCommand: FindCommand
     let unicodeFallbackCommand: FindCommand?
-    let pdfEnumerationCommand: FindCommand?
-    let docxEnumerationCommand: FindCommand?
+    let documentSearchPasses: [DocumentSearchPass]
+}
+
+enum ContentDocumentKind: String, CaseIterable, Equatable {
+    case pdf
+    case word
+    case spreadsheet
+    case presentation
+
+    var fileExtensions: [String] {
+        switch self {
+        case .pdf:
+            return ["pdf"]
+        case .word:
+            return ["docx"]
+        case .spreadsheet:
+            return ["xlsx", "xlsm"]
+        case .presentation:
+            return ["pptx", "pptm"]
+        }
+    }
+}
+
+struct DocumentSearchPass: Equatable {
+    let kind: ContentDocumentKind
+    let command: FindCommand
 }
 
 enum FindCommandBuilderError: LocalizedError, Equatable {
@@ -158,8 +182,7 @@ struct FindCommandBuilder {
                 strategy: matchesNamesInProcess ? .namesMatchedInProcess : .namesMatchedByFind,
                 primaryCommand: primaryCommand,
                 unicodeFallbackCommand: unicodeFallbackCommand,
-                pdfEnumerationCommand: nil,
-                docxEnumerationCommand: nil
+                documentSearchPasses: []
             )
         case .contents:
             let primaryCommand = try makeCommand(
@@ -188,19 +211,34 @@ struct FindCommandBuilder {
                 strategy: .contents,
                 primaryCommand: primaryCommand,
                 unicodeFallbackCommand: unicodeFallbackCommand,
-                pdfEnumerationCommand: try makePDFEnumerationCommand(
-                    folder: folder,
-                    extensions: extensions,
-                    caseSensitive: caseSensitive,
-                    includeHidden: includeHidden
-                ),
-                docxEnumerationCommand: try makeDOCXEnumerationCommand(
+                documentSearchPasses: try makeDocumentSearchPasses(
                     folder: folder,
                     extensions: extensions,
                     caseSensitive: caseSensitive,
                     includeHidden: includeHidden
                 )
             )
+        }
+    }
+
+    func makeDocumentSearchPasses(
+        folder: URL,
+        extensions: String,
+        caseSensitive: Bool,
+        includeHidden: Bool
+    ) throws -> [DocumentSearchPass] {
+        try ContentDocumentKind.allCases.compactMap { kind in
+            guard let command = try makeDocumentEnumerationCommand(
+                folder: folder,
+                extensions: extensions,
+                caseSensitive: caseSensitive,
+                includeHidden: includeHidden,
+                fileExtensions: kind.fileExtensions
+            ) else {
+                return nil
+            }
+
+            return DocumentSearchPass(kind: kind, command: command)
         }
     }
 
@@ -215,7 +253,7 @@ struct FindCommandBuilder {
             extensions: extensions,
             caseSensitive: caseSensitive,
             includeHidden: includeHidden,
-            fileExtension: "pdf"
+            fileExtensions: ContentDocumentKind.pdf.fileExtensions
         )
     }
 
@@ -230,7 +268,37 @@ struct FindCommandBuilder {
             extensions: extensions,
             caseSensitive: caseSensitive,
             includeHidden: includeHidden,
-            fileExtension: "docx"
+            fileExtensions: ContentDocumentKind.word.fileExtensions
+        )
+    }
+
+    func makeSpreadsheetEnumerationCommand(
+        folder: URL,
+        extensions: String,
+        caseSensitive: Bool,
+        includeHidden: Bool
+    ) throws -> FindCommand? {
+        try makeDocumentEnumerationCommand(
+            folder: folder,
+            extensions: extensions,
+            caseSensitive: caseSensitive,
+            includeHidden: includeHidden,
+            fileExtensions: ContentDocumentKind.spreadsheet.fileExtensions
+        )
+    }
+
+    func makePresentationEnumerationCommand(
+        folder: URL,
+        extensions: String,
+        caseSensitive: Bool,
+        includeHidden: Bool
+    ) throws -> FindCommand? {
+        try makeDocumentEnumerationCommand(
+            folder: folder,
+            extensions: extensions,
+            caseSensitive: caseSensitive,
+            includeHidden: includeHidden,
+            fileExtensions: ContentDocumentKind.presentation.fileExtensions
         )
     }
 
@@ -293,13 +361,13 @@ struct FindCommandBuilder {
         extensions: String,
         caseSensitive: Bool,
         includeHidden: Bool,
-        fileExtension: String
+        fileExtensions: [String]
     ) throws -> FindCommand? {
         let normalizedExtensions = Self.normalizedExtensions(from: extensions)
         guard let documentMatchArguments = Self.documentMatchArguments(
             extensions: normalizedExtensions,
             caseSensitive: caseSensitive,
-            fileExtension: fileExtension
+            fileExtensions: fileExtensions
         ) else {
             return nil
         }
@@ -479,14 +547,23 @@ struct FindCommandBuilder {
     private static func documentMatchArguments(
         extensions: [String],
         caseSensitive: Bool,
-        fileExtension: String
+        fileExtensions: [String]
     ) -> [String]? {
         if extensions.isEmpty {
-            return ["-iname", "*.\(fileExtension)"]
+            if fileExtensions.count == 1, let fileExtension = fileExtensions.first {
+                return ["-iname", "*.\(fileExtension)"]
+            }
+
+            return extensionMatchArguments(
+                for: fileExtensions,
+                namePredicate: "-iname"
+            )
         }
 
         let matchingExtensions = extensions.filter { extensionValue in
-            extensionValue.caseInsensitiveCompare(fileExtension) == .orderedSame
+            fileExtensions.contains { supportedExtension in
+                extensionValue.caseInsensitiveCompare(supportedExtension) == .orderedSame
+            }
         }
         guard !matchingExtensions.isEmpty else {
             return nil
